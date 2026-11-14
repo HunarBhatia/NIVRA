@@ -1,0 +1,358 @@
+================================================================================
+                        NIVRA - THE MASTER GUIDE
+================================================================================
+
+What this file is: the single place to understand everything about Nivra -
+what it is, why it exists, every architectural choice, why it was made, what
+alternatives were rejected, and what each choice led to. It is a living
+document: every decision we make gets added here.
+
+How to read it: each idea is a short paragraph of 3-4 lines. Sections go from
+"why" (problem, landscape) to "what" (product) to "how" (architecture), and end
+with a Decision Log that records every choice in order with its status.
+
+Status tags used throughout:
+  [DECIDED]   - agreed by the team, build on it
+  [PROPOSED]  - recommended, waiting for team sign-off
+  [OPEN]      - still a question, no recommendation yet
+  [REJECTED]  - considered and turned down (kept so we remember why)
+
+Last updated: 2026-11-14 (project kickoff)
+
+
+--------------------------------------------------------------------------------
+1. THE PROBLEM
+--------------------------------------------------------------------------------
+
+1.1 What happens to victims
+Someone's photo - often intimate, sometimes ordinary - gets uploaded online
+without their consent. It may be on a social network, a porn site, a Telegram
+channel, or a forum. The person usually finds out late, feels panic and shame,
+and has no idea who to contact or what their rights are.
+
+1.2 Why removal is hard today
+Every platform has a different reporting form, different rules, and different
+response times. Laws differ by country. Offshore sites ignore requests. Victims
+must repeatedly look at the content to report it, which re-traumatises them.
+Even after removal, the same image gets re-uploaded elsewhere.
+
+1.3 The core idea of Nivra
+Nivra is a guided helper that takes a victim from "I just found my photo
+online" to "it's been taken down and I'm watching for re-uploads". It finds
+the right reporting channel, writes the legal notice for them, tracks every
+link, and escalates when platforms don't respond.
+
+1.4 Kinds of non-consensual images in scope [OPEN]
+(a) Intimate images shared without consent (NCII, "revenge porn").
+(b) Morphed / AI-generated deepfakes using someone's face.
+(c) Ordinary photos misused - fake profiles, catfishing, doxxing, photos of
+children posted by others. Scope decision is pending - see Decision Log D1.
+
+
+--------------------------------------------------------------------------------
+2. THE EXISTING LANDSCAPE (what already exists and how Nivra differs)
+--------------------------------------------------------------------------------
+
+2.1 StopNCII.org
+Run by SWGfL with Meta's tech. The user's device computes a hash (digital
+fingerprint) of the image; only the hash is shared with partner platforms
+(Meta, TikTok, Reddit, Bing and others), which block matching uploads. Great
+for prevention on big platforms, useless for small/offshore sites.
+
+2.2 Take It Down (NCMEC)
+Same hash idea, but for images of people taken when they were under 18. Nivra
+must route minors here instead of handling their images itself - possessing
+such images is a serious crime even for a helper service.
+
+2.3 Platform and search-engine forms
+Google, Bing, Meta, X, Reddit etc. each have NCII/privacy removal forms.
+Google's de-indexing form is especially powerful: even if a site refuses to
+remove the image, it can disappear from search results, which is where most
+people would find it.
+
+2.4 Where the gap is (Nivra's reason to exist)
+Existing tools are scattered, each covers one platform or one type of victim,
+and none tracks a case end-to-end. Nivra's value is orchestration: one place
+that knows every channel, writes every notice, follows up, escalates, and
+watches for re-uploads.
+
+
+--------------------------------------------------------------------------------
+3. THE LEGAL GROUND WE STAND ON
+--------------------------------------------------------------------------------
+
+3.1 India - IT Rules 2021
+Rule 3(2)(b) requires intermediaries to remove content showing a person's
+private area, nudity, sexual acts or impersonation (incl. morphed images)
+within 24 hours of a complaint by that person or someone on their behalf.
+Every significant platform must publish a Grievance Officer contact.
+
+3.2 India - escalation routes
+If a platform ignores the grievance, users can appeal to the Grievance
+Appellate Committee (GAC). Criminal complaints go to cybercrime.gov.in or the
+1930 helpline. IT Act Sections 66E and 67/67A cover these offences.
+
+3.3 USA - TAKE IT DOWN Act (2025)
+Makes publishing NCII (including AI deepfakes) a federal crime and requires
+covered platforms to remove reported NCII within 48 hours of a valid request.
+DMCA copyright notices also work when the victim took the photo themselves
+(a selfie's copyright belongs to the person who took it).
+
+3.4 EU / UK
+GDPR's right to erasure and the EU Digital Services Act's notice-and-action
+system apply to EU users. The UK Online Safety Act makes sharing intimate
+images an offence and places duties on platforms.
+
+3.5 Our legal limits
+Nivra is not a law firm. We generate templates and explain options; we do not
+give legal advice. Notices are sent in the user's name with their explicit
+consent. False takedown notices can carry penalties, so verification matters.
+
+
+--------------------------------------------------------------------------------
+4. KEY CHALLENGES (and how we plan to handle each)
+--------------------------------------------------------------------------------
+
+4.1 Finding where the image is
+There is no free, legal, public API for reverse image search at scale. Google
+Lens has no API, Bing's search APIs were retired in 2025, TinEye's API is paid,
+and crawling adult sites ourselves is expensive and legally grey. Plan: start
+with user-supplied links plus assisted reverse search (see 5.1).
+
+4.2 Holding sensitive images is a liability
+If victims upload intimate images to our server, a breach would be a disaster,
+and if any image shows a minor we'd be holding illegal material. Plan: images
+never leave the user's device. We compute hashes and do any processing in the
+browser. The server only stores links, statuses and hashes.
+
+4.3 Misuse of the tool itself
+A stalker could use a "find my photos" feature to find someone else's photos,
+or a bad actor could file fake takedowns against legitimate content. Plan:
+no open face-search, notices sent only for content the user attests is
+theirs, rate limits, and (later) identity checks for automated features.
+
+4.4 Every platform is different
+Reporting channels are web forms, emails, in-app buttons - almost never APIs.
+Auto-filling forms breaks platform ToS and hits CAPTCHAs. Plan: a curated
+Platform Directory + pre-filled notices the user submits in one click, and
+direct emails to grievance/abuse addresses where they exist.
+
+4.5 Non-cooperative / offshore sites
+Some sites ignore every request. Plan: an escalation ladder - site, then the
+hosting provider, the CDN (e.g. Cloudflare), the domain registrar, search
+engine de-indexing, and finally law enforcement. Each step is automatable.
+
+4.6 Re-uploads
+Removed images reappear. Plan: periodic re-checking of known links, plus
+hash registration with StopNCII for participating platforms, plus (later)
+monitoring for new copies.
+
+4.7 Evidence vs. removal conflict
+Police and lawyers need evidence, but the goal is removal. If we remove first,
+evidence is lost. Plan: an Evidence Locker that captures URL, timestamp,
+screenshot and hash before takedown, encrypted on the user's side.
+
+4.8 Trauma and emotional safety
+Users may be in crisis. Plan: trauma-informed design - calm language, blurred
+previews by default, never forcing the user to view the content, a quick-exit
+button, helpline links on every screen, and an option to let a trusted friend
+handle the case.
+
+4.9 Deepfakes and morphed images
+A morphed image isn't a copy of an original photo, so hash matching fails.
+Detection needs face-based matching, which is biometric data and sensitive
+under India's DPDP Act and laws like Illinois' BIPA. Plan: handle deepfakes
+through the same takedown flow first; face matching only later, opt-in.
+
+4.10 Cost and scale
+We are a small team. Paid search APIs, crawling and ML inference cost money.
+Plan: build an MVP that is almost free to run (user links + notice generation
++ tracking) and add expensive discovery features only once the core works.
+
+
+--------------------------------------------------------------------------------
+5. APPROACHES CONSIDERED
+--------------------------------------------------------------------------------
+
+5.1 Discovery (finding the images)
+  A. User-provided links - user pastes URLs they found. Zero legal risk, cheap,
+     works today. Limitation: only finds what the user already knows.
+  B. Assisted reverse search - the user picks an image on their own device and
+     we open Google Lens / Yandex / TinEye with it. They search, we organise
+     the results. Note: this does send the image to that search engine, and
+     the user must be told so.
+  C. Hash registration - integrate with / redirect to StopNCII rather than
+     build our own hash network, since platforms already trust it.
+  D. Own crawler + perceptual hash matching - the "dream" feature, but costly
+     and legally risky. Later phase, if ever.
+  E. Face search (PimEyes-style) - highest misuse risk. Only ever as a
+     verified self-search, and probably never in MVP.
+  Recommendation [PROPOSED]: A + B + C for MVP. D/E deferred.
+
+5.2 Takedown (getting it removed)
+  A. Notice generator - picks the strongest legal basis (IT Rules, DMCA,
+     TAKE IT DOWN, GDPR, platform policy) and fills a template.
+  B. Platform Directory - for each platform/host: reporting URL, email,
+     grievance officer, legal basis, expected response time.
+  C. Escalation ladder - automatic suggestions when deadlines pass.
+  D. Case tracker - each link has a status; we re-check if it's still live.
+  E. Sending on the user's behalf - emails from Nivra with consent. Needs
+     good email deliverability and clear authorisation wording.
+  Recommendation [PROPOSED]: A + B + C + D for MVP, E soon after.
+
+
+--------------------------------------------------------------------------------
+6. PRODUCT FORM FACTOR
+--------------------------------------------------------------------------------
+
+6.1 Web app / PWA - core product [PROPOSED]
+Works on any phone without installing anything, which matters because most
+victims (especially in India) will find Nivra on mobile, often in a hurry.
+A Progressive Web App can later be "installed" to the home screen and look
+like a native app.
+
+6.2 Chrome extension - companion [PROPOSED, phase 2]
+Right-click any image on any page -> "Report with Nivra". It captures the
+URL, takes an evidence screenshot, hashes the image locally, and adds it to
+the user's case. Excellent for collecting links, but desktop-only, so it
+cannot be the main product.
+
+6.3 Agent skill - not the product [REJECTED as main form]
+An AI-assistant skill alone would feel low effort and puts a sensitive flow
+inside someone else's product. However, an AI agent INSIDE Nivra's backend
+(writing notices, finding host contacts, reading platform replies) is
+valuable and is planned.
+
+6.4 Messaging bot (Telegram / WhatsApp) [OPEN, later]
+A lot of leaked content in India spreads on Telegram. A bot that accepts a
+forwarded link and opens a case meets users where the harm happens. Worth
+considering after the web app is stable.
+
+6.5 Native mobile app [REJECTED for now]
+App-store review, two codebases, and installation friction. The PWA covers
+the same need until we have real users asking for native features.
+
+
+--------------------------------------------------------------------------------
+7. FEATURE IDEAS (beyond the obvious)
+--------------------------------------------------------------------------------
+
+7.1 Quick exit button - one tap jumps to a harmless page (e.g. weather) and
+clears the tab, in case someone walks in on the user.
+
+7.2 Anonymous mode - open a case with no email/phone, just a passphrase.
+Lowers the barrier for people afraid of being identified.
+
+7.3 Trusted helper mode - the victim can hand the case to a friend, family
+member or NGO worker who does the work without the victim seeing the content.
+
+7.4 Evidence Locker - encrypted on the user's device (we can't read it),
+exportable as a PDF evidence pack with timestamps and SHA-256 hashes for
+police or lawyers.
+
+7.5 Re-upload watch - Nivra periodically re-checks removed links and alerts
+the user if content comes back.
+
+7.6 Platform response scoreboard - aggregated, anonymous stats of which
+platforms remove content fastest. Useful for users and for advocacy.
+
+7.7 Multilingual - Hindi and other Indian languages, both for the UI and for
+notices where local language helps.
+
+7.8 NGO / legal-aid partners - referral links to support organisations,
+counselling, and pro-bono lawyers built into the flow.
+
+7.9 Prevention tools [later] - helping people protect photos before posting
+(e.g. perturbation techniques that make AI morphing harder).
+
+
+--------------------------------------------------------------------------------
+8. PROPOSED ARCHITECTURE (MVP) [PROPOSED - not final]
+--------------------------------------------------------------------------------
+
+8.1 Guiding principle: data minimisation
+The server should know as little as possible. No images, only links, hashes,
+statuses and the minimum contact info needed. If we're ever breached, the
+leaked data should be close to useless to an attacker.
+
+8.2 Frontend
+Next.js (React) + TypeScript + Tailwind CSS, delivered as a PWA. Next.js
+gives us routing, server rendering for fast first load on slow phones, and
+API routes in the same project. TypeScript catches bugs early.
+
+8.3 Client-side image processing
+Perceptual hashing (pHash / PDQ) and encryption run in the browser using
+WebAssembly and the Web Crypto API. This is what lets us promise "your images
+never leave your device".
+
+8.4 Backend
+Start inside Next.js API routes to keep one codebase. If we add heavy image or
+ML work later, a separate Python (FastAPI) service can be added for that part
+only. Background jobs handle link re-checks and reminders.
+
+8.5 Database
+PostgreSQL (e.g. via Supabase) for cases, links, platform directory and
+statuses. Relational data fits well: a case has many links, each link belongs
+to a platform, each platform has many reporting channels.
+
+8.6 AI layer
+An LLM (Claude) drafts notices tailored to platform + law, classifies a URL
+to its platform/host, and later reads platform replies to update status.
+Images are never sent to the LLM - only text and URLs.
+
+8.7 Email
+A transactional email service (e.g. Resend / Postmark) for sending notices
+on the user's behalf and for status updates, with proper SPF/DKIM so mails
+don't land in spam.
+
+
+--------------------------------------------------------------------------------
+9. FRONTEND DESIGN DIRECTION (draft, to be refined with the design prompt)
+--------------------------------------------------------------------------------
+
+9.1 Tone - calm, private, in control. Soft neutral colours, no stock images
+of people, no alarming red. The user should feel safe the moment the page
+loads.
+
+9.2 Main screens
+Landing -> "Start a case" wizard (what happened -> where is it -> evidence ->
+notices -> submit) -> Case dashboard (each link with status) -> Platform
+guides -> Help & resources.
+
+9.3 Safety UX - quick exit always visible, blurred thumbnails by default,
+plain-language explanations, never more than one decision per screen.
+
+
+--------------------------------------------------------------------------------
+10. DECISION LOG
+--------------------------------------------------------------------------------
+
+D0  [DECIDED] Repository: github.com/HunarBhatia/NIVRA, local folder
+    Desktop/NIVRA. All code is pushed here.
+D1  [OPEN] Scope - NCII only, or all non-consensual images (deepfakes, fake
+    profiles, children's photos)?
+D2  [OPEN] Geography - India first, or global from day one?
+D3  [PROPOSED] Images never leave the user's device; server stores no images.
+D4  [PROPOSED] Main form factor: mobile-first web app (PWA). Chrome extension
+    as phase-2 companion. Agent skill rejected as main product.
+D5  [PROPOSED] MVP discovery: user-provided links + assisted reverse search +
+    StopNCII referral. No own crawler or face search in MVP.
+D6  [PROPOSED] Stack: Next.js + TypeScript + Tailwind + PostgreSQL + Claude.
+D7  [OPEN] Accounts - anonymous passphrase, email login, or both?
+D8  [OPEN] Project goal - hackathon / portfolio vs. real public launch. This
+    decides how much verification and legal rigour we need.
+
+
+--------------------------------------------------------------------------------
+11. GLOSSARY
+--------------------------------------------------------------------------------
+
+NCII - Non-Consensual Intimate Imagery.
+Hash - a short fingerprint computed from a file; the same image gives the same
+  hash, but you can't rebuild the image from the hash.
+Perceptual hash (pHash, PDQ) - a hash that stays similar even if the image is
+  resized, cropped slightly or recompressed, so re-uploads can be matched.
+De-indexing - removing a page from search results without removing the page.
+Grievance Officer - the person Indian platforms must name to handle complaints.
+PWA - Progressive Web App; a website that can be installed like an app.
+CDN - Content Delivery Network (e.g. Cloudflare) that sits in front of sites.
