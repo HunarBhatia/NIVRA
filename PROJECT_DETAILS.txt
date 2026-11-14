@@ -1442,11 +1442,12 @@ Gemini request (URL with the model name, system instruction, JSON mime type
 and schema, token limit) and the mapping of SAFETY, MAX_TOKENS, 429 and 404.
 134 backend tests pass with the Anthropic SDK uninstalled.
 
-19.7 Not verified yet
-No live Gemini call has been made: the key hasn't been added. Once it is,
-"Prepare a notice" should show "Drafted by AI (gemini-3.1-flash-lite)". If
-the model name is wrong, drafting falls back to the template and the run's
-notes show llm_error:model_not_found.
+19.7 Verified live (2026-11-15)
+With the team's key in backend/.env: a direct call returned valid JSON in
+2.1 s; in the app, "Prepare a notice" produced a Gemini draft in 8 s that
+passed every guardrail on the first attempt (it cited only the supplied
+rules and sections); the stored draft held {{URL}}, not the link, proving
+the model never saw it. "Explain this match" also passed its checks.
 
 19.8 Prune
 The optional Prune adapter was built on the Anthropic SDK and was removed
