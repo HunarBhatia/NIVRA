@@ -42,11 +42,19 @@ online" to "it's been taken down and I'm watching for re-uploads". It finds
 the right reporting channel, writes the legal notice for them, tracks every
 link, and escalates when platforms don't respond.
 
-1.4 Kinds of non-consensual images in scope [OPEN]
+1.4 Kinds of non-consensual images in scope [DECIDED - see D1]
 (a) Intimate images shared without consent (NCII, "revenge porn").
 (b) Morphed / AI-generated deepfakes using someone's face.
-(c) Ordinary photos misused - fake profiles, catfishing, doxxing, photos of
-children posted by others. Scope decision is pending - see Decision Log D1.
+(c) Ordinary photos misused for impersonation - fake profiles, catfishing.
+All three are in scope for adults. They share one takedown flow; only the
+legal basis and wording of the notice change.
+
+1.5 Children are a special case [DECIDED]
+If the person in the image was under 18 when it was taken, Nivra does NOT
+handle the image at all. It routes the user to NCMEC's Take It Down, the
+cybercrime.gov.in "child pornography/CSAM" category and the 1930 helpline.
+Reason: even holding such material is a crime, and these channels have legal
+powers we don't.
 
 
 --------------------------------------------------------------------------------
@@ -267,7 +275,7 @@ counselling, and pro-bono lawyers built into the flow.
 
 
 --------------------------------------------------------------------------------
-8. PROPOSED ARCHITECTURE (MVP) [PROPOSED - not final]
+8. ARCHITECTURE (MVP) [DECIDED - see D3, D6]
 --------------------------------------------------------------------------------
 
 8.1 Guiding principle: data minimisation
@@ -324,27 +332,179 @@ plain-language explanations, never more than one decision per screen.
 
 
 --------------------------------------------------------------------------------
-10. DECISION LOG
+10. MVP BLUEPRINT (what we build first and how the pieces fit)
+--------------------------------------------------------------------------------
+
+10.1 The MVP in one sentence
+A user pastes the links where their image appears; Nivra identifies each
+platform, writes the right legal notice, shows exactly where to send it,
+tracks every link's status, and tells the user what to do when a platform
+doesn't respond.
+
+10.2 The main user journey ("Start a case" wizard)
+Step 1 Safety check - is the user safe right now? Was the person under 18?
+  (Under 18 -> redirect to Take It Down / cybercrime.gov.in, flow ends.)
+Step 2 What happened - intimate image, morphed/deepfake, or fake profile.
+Step 3 Where is it - paste one or more links (more can be added later).
+Step 4 Evidence - guided screenshot + timestamp capture before removal.
+Step 5 Notices - Nivra drafts one notice per link; user reviews and sends.
+Step 6 Save case - user gets a Case ID + chooses a passphrase to return.
+
+10.3 Case identity (anonymous accounts, see D7)
+A case is identified by a random Case ID (e.g. NV-7K3Q-92XD) and a
+passphrase the user chooses. The server stores only a slow hash of the
+passphrase (Argon2), never the passphrase itself. Lose both = lose the case,
+which is the honest trade-off for anonymity; we say this clearly.
+
+10.4 What lives where [DECIDED - D9]
+Links, statuses and notice text are stored on the server, because the server
+must re-check links and send reminders. Evidence (screenshots) is encrypted
+on the user's device with a key derived from their passphrase, so even if
+it's backed up to our server, we cannot read it.
+
+10.5 Link status lifecycle
+found -> reported -> awaiting response -> removed
+                                   \-> no response (deadline passed) -> escalated
+                                   \-> rejected -> escalated
+removed -> reappeared (re-check found it live again) -> reported ...
+Every status change is stored as an event, so the user sees a full timeline
+and we can build the evidence PDF from it.
+
+10.6 Platform resolution
+When a link is added, Nivra reads its domain and looks it up in the Platform
+Directory (instagram.com -> Meta). If unknown, it looks up the hosting
+provider (DNS/IP -> host's abuse contact) so there is always someone to
+send a notice to. Unknown domains are logged so we can add them over time.
+
+10.7 Data model (database tables)
+  cases           - id, passphrase_hash, category, created_at, email (opt.)
+  links           - id, case_id, url, platform_id, status, last_checked_at
+  status_events   - id, link_id, from_status, to_status, note, created_at
+  notices         - id, link_id, legal_basis, channel_id, body, sent_at
+  platforms       - id, name, domains[], country, notes
+  report_channels - id, platform_id, type (form/email/in-app), target,
+                    legal_basis, expected_response_hours
+A case has many links; a link has many events and notices; a platform has
+many report channels (e.g. Meta has an NCII form AND a grievance email).
+
+10.8 Legal basis modules
+Each law is a module: India IT Rules, US TAKE IT DOWN, US DMCA, EU GDPR,
+platform policy. A module says when it applies (country, category, who took
+the photo), its deadline, and its notice template. The notice generator
+picks the strongest applicable module for each link.
+
+10.9 Pages (routes)
+  /                    landing - what Nivra does, privacy promise, start
+  /start               the case wizard (10.2)
+  /case                open an existing case (Case ID + passphrase)
+  /case/[id]           case dashboard - links, statuses, next actions
+  /guides              platform guides directory
+  /guides/[platform]   how to report on one platform, step by step
+  /help                helplines, NGOs, legal aid, police reporting
+  Quick exit (every page) -> replaces the tab with a neutral site.
+
+10.10 API (server endpoints)
+  POST /api/cases                 create case, returns Case ID
+  POST /api/cases/open            verify Case ID + passphrase, start session
+  POST /api/cases/[id]/links      add links, resolves platform
+  PATCH /api/links/[id]           update status (e.g. user marks "sent")
+  POST /api/notices/draft         generate notice text for a link
+  GET  /api/platforms/resolve     url -> platform + report channels
+
+10.11 Repository layout [DECIDED - D10]
+  /web          the Next.js app (frontend + API)
+  /extension    Chrome extension (phase 2, empty for now)
+  PROJECT_DETAILS.txt  this guide
+Why: keeping the web app in its own folder leaves room for the extension
+(and maybe a Telegram bot) in the same repo without a messy restructure.
+
+10.12 Build order
+  Phase 1  Scaffold, landing page, design system, quick exit, help page.
+  Phase 2  Case wizard + Platform Directory (seeded with top ~20 platforms).
+  Phase 3  Database, anonymous cases, case dashboard, status tracking.
+  Phase 4  Notice generation (templates first, Claude-assisted after).
+  Phase 5  Link re-checks, escalation suggestions, evidence PDF export.
+  Phase 6  Chrome extension, optional email alerts, Hindi.
+
+
+10.13 Scaffold - what was set up and why (2026-11-14)
+The web app was created with create-next-app: Next.js 16, React 19,
+TypeScript, Tailwind CSS 4, ESLint, the App Router and a src/ folder.
+The App Router is Next's current routing system - each folder in
+src/app becomes a page, which maps cleanly onto the routes in 10.9.
+
+10.14 Note for anyone (or any AI) editing the code
+Next.js 16 has breaking changes from older versions. web/AGENTS.md (created
+by Next.js itself) says to check the docs bundled in
+node_modules/next/dist/docs/ before writing code, not to rely on memory.
+
+10.15 Branching workflow
+main always holds working code. Each piece of work happens on its own branch
+(e.g. setup/mvp-architecture), gets pushed, and is merged into main through
+a pull request. This keeps a clear history of why each change was made.
+
+
+--------------------------------------------------------------------------------
+11. DECISION LOG
 --------------------------------------------------------------------------------
 
 D0  [DECIDED] Repository: github.com/HunarBhatia/NIVRA, local folder
     Desktop/NIVRA. All code is pushed here.
-D1  [OPEN] Scope - NCII only, or all non-consensual images (deepfakes, fake
-    profiles, children's photos)?
-D2  [OPEN] Geography - India first, or global from day one?
-D3  [PROPOSED] Images never leave the user's device; server stores no images.
-D4  [PROPOSED] Main form factor: mobile-first web app (PWA). Chrome extension
-    as phase-2 companion. Agent skill rejected as main product.
-D5  [PROPOSED] MVP discovery: user-provided links + assisted reverse search +
-    StopNCII referral. No own crawler or face search in MVP.
-D6  [PROPOSED] Stack: Next.js + TypeScript + Tailwind + PostgreSQL + Claude.
-D7  [OPEN] Accounts - anonymous passphrase, email login, or both?
-D8  [OPEN] Project goal - hackathon / portfolio vs. real public launch. This
-    decides how much verification and legal rigour we need.
+
+D1  [DECIDED 2026-11-14] Scope: intimate images, deepfakes/morphed images,
+    and impersonation (fake profiles) - for adults. Minors are routed to
+    Take It Down / cybercrime.gov.in, never handled by Nivra.
+    Why: all three share the same takedown mechanics, so covering them costs
+    little extra, and morphed images are a fast-growing problem in India.
+    Excluding children's images keeps us legally safe.
+
+D2  [DECIDED 2026-11-14] Geography: India first, built to go global.
+    Why: Indian law (IT Rules 24-hour removal) is strong and few tools serve
+    Indian users. Laws are kept as separate "legal basis" modules (India,
+    US, EU...) so adding a country means adding a module, not a rewrite.
+
+D3  [DECIDED 2026-11-14] Images never leave the user's device; the server
+    stores no images, only links, hashes and statuses.
+    Why: removes breach risk and the risk of holding illegal material. It
+    also makes "launch for real" possible without a legal team.
+
+D4  [DECIDED 2026-11-14] Form factor: mobile-first web app (PWA). Chrome
+    extension in phase 2. Agent skill rejected as the main product.
+
+D5  [DECIDED 2026-11-14] MVP discovery: user-pasted links + assisted reverse
+    image search + StopNCII referral. No own crawler or face search in MVP.
+    Why: zero legal risk and near-zero cost; expensive discovery is only
+    worth building once the takedown flow is proven.
+
+D6  [DECIDED 2026-11-14] Stack: Next.js (App Router) + TypeScript + Tailwind
+    + PostgreSQL + Claude for notice drafting.
+    Why: one codebase for frontend and API, large ecosystem, easy hosting,
+    and strong typing for a sensitive app where bugs are costly.
+
+D7  [DECIDED 2026-11-14] Accounts: anonymous by default (case ID +
+    passphrase), optional email added later for reminders and alerts.
+    Why: fear of being identified is a big reason victims don't seek help.
+    Email is opt-in for those who want follow-up notifications.
+
+D8  [DECIDED 2026-11-14] Goal: build to real-launch quality, released in
+    stages. Portfolio-ready first, public launch when safety features
+    (quick exit, verification, rate limits) are complete.
+    Why: D3 keeps legal risk low enough that a real launch is realistic,
+    and a real product is worth more than a demo, even as a portfolio piece.
+
+
+D9  [DECIDED 2026-11-14] Links/statuses/notices stored server-side; evidence
+    encrypted client-side with a passphrase-derived key.
+    Why: the server needs to read links to re-check them, but it never needs
+    to read evidence - so evidence stays unreadable to us.
+
+D10 [DECIDED 2026-11-14] Repo layout: Next.js app in /web, extension later in
+    /extension.
+    Why: room for multiple clients in one repo without restructuring later.
 
 
 --------------------------------------------------------------------------------
-11. GLOSSARY
+12. GLOSSARY
 --------------------------------------------------------------------------------
 
 NCII - Non-Consensual Intimate Imagery.
