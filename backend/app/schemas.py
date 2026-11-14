@@ -188,3 +188,57 @@ class MatchResultOut(BaseModel):
 class MatchCheckOut(BaseModel):
     results: list[MatchResultOut]
     thresholds: dict[str, float]
+
+
+# ---------- Discovery & matches (phase 4) ----------
+
+class DiscoveryJobIn(Strict):
+    url: str = Field(min_length=4, max_length=2048)
+
+
+class DiscoveryJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    provider: str
+    input_url: str
+    status: Literal["queued", "running", "done", "failed"]
+    error_message: str | None
+    page_title: str | None
+    candidates_found: int
+    candidates_checked: int
+    candidates_skipped: int
+    matches_found: int
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class MatchOut(BaseModel):
+    id: str
+    image_id: str
+    image_label: str
+    provider: str
+    source_page_url: str
+    candidate_image_url: str
+    classification: Literal["exact", "high", "possible"]
+    sha256_equal: bool
+    phash_distance: int | None
+    cosine: float | None
+    status: Literal["pending", "confirmed", "rejected"]
+    case_link_id: str | None
+    discovered_at: datetime
+    reviewed_at: datetime | None
+
+
+class MatchReviewIn(Strict):
+    decision: Literal["confirmed", "rejected", "pending"]
+
+
+class MatchToCaseIn(Strict):
+    """Either add to an existing case, or create a new one with a category."""
+    case_id: str | None = None
+    category: Category | None = None
+
+
+class MatchToCaseOut(BaseModel):
+    case_id: str
+    link_id: str

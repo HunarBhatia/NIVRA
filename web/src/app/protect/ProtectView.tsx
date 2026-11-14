@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AccountGate from "@/components/AccountGate";
+import DiscoveryPanel from "./DiscoveryPanel";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { UnreadableImage, fingerprintFile, type Fingerprints } from "@/lib/fingerprint";
@@ -28,6 +29,7 @@ export default function ProtectView() {
   const [images, setImages] = useState<ProtectedImage[]>([]);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [toReview, setToReview] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -95,17 +97,21 @@ export default function ProtectView() {
             </div>
             <div>
               <strong className="num">{images.filter((i) => i.status === "active").length}</strong>
-              <span className="small muted">ready for monitoring</span>
+              <span className="small muted">active</span>
+            </div>
+            <div>
+              <strong className="num">{toReview}</strong>
+              <span className="small muted">matches to review</span>
             </div>
           </div>
         </div>
         <div className="well small stack">
           <p>
-            <strong>What works today:</strong> fingerprints are saved, and you can check any copy
-            you find against them below.
+            <strong>What works today:</strong> Nivra checks any page you point it to, and you can
+            check a saved copy against your images.
           </p>
           <p className="muted">
-            Automatic searching of the web starts in the next phase of Nivra.
+            Nivra doesn&apos;t search the whole web on its own yet. Scheduled re-checks come later.
           </p>
         </div>
       </div>
@@ -147,6 +153,7 @@ export default function ProtectView() {
         )}
       </section>
 
+      {images.length > 0 && <DiscoveryPanel onMatchesChanged={setToReview} />}
       {images.length > 0 && <CheckCopy />}
     </div>
   );
@@ -446,7 +453,7 @@ function ImageRow({
             <span className="small muted">Added {dateFmt(img.created_at)}</span>
           </span>
           <span className="badge" data-tone={img.status === "active" ? "good" : "neutral"}>
-            {img.status === "active" ? "Ready for monitoring" : "Paused"}
+            {img.status === "active" ? "Active" : "Paused"}
           </span>
         </summary>
         <div className="stack" style={{ paddingBottom: "var(--space-xl)" }}>

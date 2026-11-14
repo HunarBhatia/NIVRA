@@ -4,21 +4,36 @@ Run (from backend/):  .venv/Scripts/python -m uvicorn app.main:app --reload --po
 """
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import account, auth, cases, images
+from app.api import account, auth, cases, discovery, images
 from app.core.config import get_settings
 
 settings = get_settings()
 log = logging.getLogger("nivra")
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop = None
+    if settings.inline_worker and settings.environment == "development":
+        from app.discovery.worker import start_inline_worker
+
+        stop = start_inline_worker()
+    yield
+    if stop:
+        stop.set()
+
+
 app = FastAPI(
     title="Nivra API",
-    version="0.3.0",
+    version="0.4.0",
+    lifespan=lifespan,
     # Interactive docs are handy in development, but not exposed in production.
     docs_url=None if settings.is_production else "/api/docs",
     redoc_url=None,
@@ -70,3 +85,4 @@ app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(cases.router)
 app.include_router(images.router)
+app.include_router(discovery.router)

@@ -982,3 +982,139 @@ search runs yet (phase 4). CLIP cannot reliably tell a cropped copy from a
 similar-looking different photo (15.11). Uvicorn's auto-reload did not
 detect file changes in this OneDrive folder - restart the backend manually
 after code changes.
+
+
+
+--------------------------------------------------------------------------------
+16. PHASE 4 - DISCOVERY AND MATCHING (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+16.1 What was built
+On /protect, "Check a web page for your images": the user pastes a page or
+image link, Nivra visits it in the background, fingerprints every image in
+memory, compares them with the user's active protected images, and lists
+possible matches for the user to review. Confirmed matches can be added to
+a case with one click, which gives them a takedown notice.
+
+16.2 The key consequence of D13 (read this)
+Because Nivra never holds the original image, it can't send it to a
+reverse-image-search service (TinEye, Google Lens etc. all need the actual
+picture). So discovery works the other way round: Nivra visits pages and
+compares what it finds against fingerprints. Decision on external search:
+D18 (open).
+
+16.3 Provider interface (backend/app/discovery/providers.py)
+Every source of candidate images implements DiscoveryProvider.discover().
+Today there is one: UserSubmittedUrlProvider ("user_url"). Future sources
+(scheduled re-checks, a platform API, a licensed search service) are new
+classes registered in PROVIDERS; the job runner does not change. Providers
+that would need the original image are flagged and not allowed.
+
+16.4 The safe fetcher (backend/app/discovery/fetch.py)
+The only code that touches the web. Letting a server fetch user-supplied
+links is a classic attack route ("SSRF"): someone could point it at
+internal services or cloud-metadata addresses (169.254.169.254) to steal
+secrets. The fetcher is built to make that impossible.
+
+16.5 How SSRF is blocked
+The hostname is resolved first; if ANY address is private, loopback,
+link-local or reserved, the fetch is refused before anything is sent. The
+request then goes to that exact IP (with TLS still verifying the real
+hostname), so DNS can't be switched mid-request ("DNS rebinding").
+Redirects are followed by hand, max 3, re-checking every hop.
+
+16.6 Other fetch limits
+Only http/https on ports 80/443. 10-second timeouts. Pages max 2 MB,
+images max 15 MB, enforced while streaming. Images over 40 megapixels are
+refused ("decompression bombs"). Only JPEG/PNG/WebP/GIF/BMP are decoded;
+SVG is skipped (it can contain scripts).
+
+16.7 Being a good web citizen
+Our bot identifies itself ("NivraBot/0.1"), honours robots.txt (missing =
+allowed, server error = don't crawl), pauses 0.5 s between requests,
+stops on 401/403 (login walls) and 429 (slow down) and never tries to get
+around them - no logins, no CAPTCHA solving. Each account can run at most
+20 checks per hour.
+
+16.8 What happens to found images
+Candidate bytes exist only in memory while being fingerprinted, then are
+dropped. Only URLs, which protected image matched, the classification and
+the scores are saved - and only for exact/high/possible results. A
+different image leaves no trace. Tests check that no bytes are stored.
+
+16.9 Matching rules
+Same rules as section 15.10, against the user's ACTIVE images only - so
+"Pause monitoring" really pauses matching. A page checked again updates its
+existing matches instead of duplicating them, and keeps the user's review.
+
+16.10 Why the server has no AI embedding for candidates yet
+To compare embeddings, the server would need the exact same CLIP model as
+the browser (ONNX, same preprocessing). It is deferred: CLIP alone can only
+ever produce a "possible" (15.11), and a copy-detection model may replace
+it (15.12). Server matching uses SHA-256 and pHash today.
+
+16.11 Background jobs without Redis [DECIDED - D17]
+Jobs live in the discovery_jobs table and a worker claims the oldest
+queued one with a conditional UPDATE (so two workers can't take the same
+job). In development the worker runs as a thread inside the API; in
+production run "python -m app.discovery.worker". Stuck jobs are retried up
+to 3 times. Celery + Redis can replace this later behind the same API.
+
+16.12 Human in the loop
+Every match starts "pending". The user chooses "Yes, this is my image" or
+"No, not mine" (dismissed matches can be restored). Only confirmed matches
+can be added to a case, and adding one puts the PAGE URL (what platforms
+need) into the case as a link.
+
+16.13 Why found images are never shown
+Nivra doesn't keep them, and loading them straight from the site would
+reveal the user's visit (possibly to the person who posted them). The UI
+offers "Open the page in a new tab" with that warning, and suggests a
+trusted friend can check instead.
+
+16.14 Local testing override
+NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS=true lets the server fetch localhost /
+private addresses so you can test with a page on your own machine (use
+127.0.0.1 links). The server refuses to start in production with it on.
+
+16.15 Tested in the real browser
+A local test page with 4 images: the exact copy and the resized copy were
+flagged (exact, very likely), the different image left no record, and the
+missing image was counted as skipped. Confirming one and adding it to a new
+case put the page link into that case. In normal mode the same local page
+and the cloud-metadata address were both refused.
+
+16.16 Bugs testing caught
+An ftp:// link got a misleading "robots.txt" message because robots was
+checked before the scheme; and the metadata address was refused by the
+robots step instead of the "private network" rule. Both fixed: address and
+scheme checks now run first, before even robots.txt is requested.
+
+16.17 API added (backend/app/api/discovery.py)
+POST /api/discovery/jobs, GET /api/discovery/jobs, GET
+/api/discovery/jobs/{id}, GET /api/matches (?status_filter=), POST
+/api/matches/{id}/review, POST /api/matches/{id}/add-to-case.
+
+16.18 Tests (90 backend tests passing)
+Public/private IP rules incl. IPv6 and mapped addresses, SSRF refusals
+with nothing sent, pinning to the resolved IP, redirect re-checks, size
+caps, login walls, robots.txt, HTML extraction, decompression bombs, full
+jobs with a fake website, re-runs, paused images, failures, rate limits,
+review and add-to-case, cross-account isolation, deletion, the worker.
+
+16.19 Still not done after phase 4
+No automatic searching beyond pages the user gives (see D18). No scheduled
+re-checks (phase 7). No server-side embedding. The rate limiter and the
+inline worker are single-process (fine for development, not for scale).
+
+D17 [DECIDED 2026-11-15] Background jobs use a database-backed queue and a
+    simple worker, not Redis + Celery (yet).
+    Why: no Docker on the dev machine, low job volume, one less service to
+    secure. The worker module can be swapped for Celery later.
+
+D18 [OPEN 2026-11-15] How (or whether) to search the wider web.
+    Options: (a) stay fingerprint-only - user-submitted pages plus later
+    scheduled re-checks of known pages; (b) let a user explicitly send ONE
+    image to a licensed reverse-search API (e.g. TinEye, paid) from their
+    browser, an informed exception to D13; (c) apply to industry hash-
+    sharing programmes (StopNCII-style) as a partner. Team to decide.

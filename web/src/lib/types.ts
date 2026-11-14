@@ -96,3 +96,37 @@ export interface MatchCheck {
   results: MatchResult[];
   thresholds: Record<string, number>;
 }
+
+// ---------- Discovery (phase 4) ----------
+
+export interface DiscoveryJob {
+  id: string;
+  provider: string;
+  input_url: string;
+  status: "queued" | "running" | "done" | "failed";
+  error_message: string | null;
+  page_title: string | null;
+  candidates_found: number;
+  candidates_checked: number;
+  candidates_skipped: number;
+  matches_found: number;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface DiscoveredMatch {
+  id: string;
+  image_id: string;
+  image_label: string;
+  provider: string;
+  source_page_url: string;
+  candidate_image_url: string;
+  classification: "exact" | "high" | "possible";
+  sha256_equal: boolean;
+  phash_distance: number | null;
+  cosine: number | null;
+  status: "pending" | "confirmed" | "rejected";
+  case_link_id: string | null;
+  discovered_at: string;
+  reviewed_at: string | null;
+}

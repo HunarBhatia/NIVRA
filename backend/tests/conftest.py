@@ -10,6 +10,7 @@ os.environ["NIVRA_ENVIRONMENT"] = "test"
 os.environ["NIVRA_DATABASE_URL"] = f"sqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["NIVRA_DATA_KEY"] = Fernet.generate_key().decode()
 os.environ["NIVRA_AUTH_RATE_LIMIT"] = "1000"
+os.environ["NIVRA_INLINE_WORKER"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

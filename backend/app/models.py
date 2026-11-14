@@ -2,7 +2,8 @@
 
 Phase 2: users, sessions, cases, links, status events, audit events.
 Phase 3: protected images and their fingerprints (never the images: D13).
-Discovery jobs, matches, evidence and complaints are added by later phases
+Phase 4: discovery jobs and discovered matches (never candidate images: 13.11).
+Evidence and complaints are added by later phases
 with their own migrations, so each lands with the code that uses it
 (PROJECT_DETAILS.txt 13.21).
 """
@@ -175,3 +176,69 @@ class AuditEvent(Base):
     target_type: Mapped[str | None] = mapped_column(String(32), default=None)
     target_id: Mapped[str | None] = mapped_column(String(32), default=None)
     at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+# ---------- Phase 4: discovery ----------
+
+
+class DiscoveryJob(Base):
+    """One run of a discovery provider for one user, e.g. "check this page".
+    Runs in the background (app/discovery/worker.py)."""
+
+    __tablename__ = "discovery_jobs"
+    __table_args__ = (Index("ix_discovery_jobs_status_created", "status", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    input_url: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|done|failed
+    error_code: Mapped[str | None] = mapped_column(String(32), default=None)
+    error_message: Mapped[str | None] = mapped_column(String(255), default=None)
+    page_title: Mapped[str | None] = mapped_column(String(200), default=None)
+    candidates_found: Mapped[int] = mapped_column(Integer, default=0)
+    candidates_checked: Mapped[int] = mapped_column(Integer, default=0)
+    candidates_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    matches_found: Mapped[int] = mapped_column(Integer, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class DiscoveredMatch(Base):
+    """A candidate image that resembled one of the user's protected images.
+
+    Stores WHERE it was found and HOW similar it was - never the image.
+    Starts as `pending` and needs the user's review (confirmed/rejected)
+    before anything can be drafted or sent (human in the loop).
+    """
+
+    __tablename__ = "discovered_matches"
+    __table_args__ = (
+        UniqueConstraint("image_id", "candidate_image_url", name="uq_match_image_candidate"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("discovery_jobs.id", ondelete="SET NULL"), default=None
+    )
+    image_id: Mapped[str] = mapped_column(
+        ForeignKey("protected_images.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(32))
+    source_page_url: Mapped[str] = mapped_column(Text)
+    candidate_image_url: Mapped[str] = mapped_column(Text)
+    classification: Mapped[str] = mapped_column(String(16))  # exact | high | possible
+    sha256_equal: Mapped[bool] = mapped_column(Boolean, default=False)
+    phash_distance: Mapped[int | None] = mapped_column(Integer, default=None)
+    cosine: Mapped[float | None] = mapped_column(default=None)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|confirmed|rejected
+    case_link_id: Mapped[str | None] = mapped_column(
+        ForeignKey("case_links.id", ondelete="SET NULL"), default=None
+    )
+    discovered_at: Mapped[datetime] = mapped_column(default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    image: Mapped[ProtectedImage] = relationship()

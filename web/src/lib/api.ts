@@ -5,6 +5,8 @@ import type {
   Account,
   CaseLink,
   CaseSummary,
+  DiscoveredMatch,
+  DiscoveryJob,
   Category,
   LinkStatus,
   MatchCheck,
@@ -150,4 +152,25 @@ export const checkCopy = (fp: Omit<Fingerprints, "phash_algorithm">) =>
   call<MatchCheck>(
     "/images/check",
     json("POST", { sha256: fp.sha256, phash: fp.phash, embedding: fp.embedding }),
+  );
+
+// ---------- Discovery (phase 4) ----------
+
+export const createDiscoveryJob = (url: string) =>
+  call<DiscoveryJob>("/discovery/jobs", json("POST", { url }));
+
+export const listDiscoveryJobs = () => call<DiscoveryJob[]>("/discovery/jobs");
+
+export const getDiscoveryJob = (id: string) =>
+  call<DiscoveryJob>(`/discovery/jobs/${encodeURIComponent(id)}`);
+
+export const listMatches = () => call<DiscoveredMatch[]>("/matches");
+
+export const reviewMatch = (id: string, decision: "confirmed" | "rejected" | "pending") =>
+  call<DiscoveredMatch>(`/matches/${encodeURIComponent(id)}/review`, json("POST", { decision }));
+
+export const addMatchToCase = (id: string, target: { case_id?: string; category?: Category }) =>
+  call<{ case_id: string; link_id: string }>(
+    `/matches/${encodeURIComponent(id)}/add-to-case`,
+    json("POST", target),
   );

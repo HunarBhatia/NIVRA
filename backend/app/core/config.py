@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     allowed_embedding_models: list[str] = ["clip-vit-base-patch32-q8"]
     embedding_dims: int = 512
 
+    # Discovery (phase 4)
+    discovery_max_page_bytes: int = 2_000_000
+    discovery_max_image_bytes: int = 15_000_000
+    discovery_jobs_per_hour: int = 20
+    # Lets discovery fetch localhost/private addresses. ONLY for local testing;
+    # refused in production (it would open an SSRF hole).
+    discovery_allow_private_hosts: bool = False
+    # Run queued jobs in a background thread of the API process (handy in
+    # development). In production run `python -m app.discovery.worker` instead.
+    inline_worker: bool = True
+
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True
 
@@ -67,6 +78,8 @@ def get_settings() -> Settings:
             raise RuntimeError("NIVRA_COOKIE_SECURE must be true in production")
         if settings.enable_prototype_tools:
             raise RuntimeError("NIVRA_ENABLE_PROTOTYPE_TOOLS must be false in production")
+        if settings.discovery_allow_private_hosts:
+            raise RuntimeError("NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS must be false in production")
         if settings.database_url.startswith("sqlite"):
             raise RuntimeError("Use PostgreSQL in production (D15)")
     return settings

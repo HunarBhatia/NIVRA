@@ -75,4 +75,22 @@ cd ../web && node --experimental-strip-types scripts/check-phash.ts
 
 Note: `--reload` may not notice file changes inside a OneDrive folder; restart the server after editing code.
 
+## API (phase 4: discovery)
+
+| Method | Path | What it does |
+|---|---|---|
+| POST / GET | `/api/discovery/jobs` | Queue a check of a page or image link / list recent checks |
+| GET | `/api/discovery/jobs/{id}` | Progress and result of one check |
+| GET | `/api/matches` | Matches found (optional `?status_filter=pending`, `confirmed` or `rejected`) |
+| POST | `/api/matches/{id}/review` | The user's decision: `confirmed`, `rejected` or back to `pending` |
+| POST | `/api/matches/{id}/add-to-case` | Add a confirmed match's page to an existing or new case |
+
+Jobs run in a background thread of the API in development. In production, run the worker separately:
+
+```bash
+./.venv/Scripts/python -m app.discovery.worker
+```
+
+To test discovery against a page on your own machine, start the API with `NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS=true` and use `127.0.0.1` links. Never enable it in production (the server refuses to start).
+
 Every case and link query is scoped to the logged-in account, so another account's IDs return 404.
