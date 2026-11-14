@@ -1201,14 +1201,14 @@ overdue/refused links. Kept drafts are noted on the link's timeline, but
 the status is NOT changed: a prepared message is not a sent one, and sent is
 not resolved. Drafts never claim facts Nivra can't know.
 
-17.13 Claude provider details (backend/app/llm/anthropic_provider.py)
+17.13 [SUPERSEDED by section 19 - now Gemini] Claude provider details
 Official Anthropic Python SDK (2.8.0), model claude-opus-5-5, adaptive
 thinking, effort "low" (configurable), JSON-schema structured output,
 server-side refusal fallbacks enabled (beta server-side-fallback-2026-07-01,
 fallbacks="default"). Errors map to safe codes with a retryable flag. A
 mocked-HTTP test checks the exact request shape.
 
-17.14 Swappable provider and Prune (D16)
+17.14 [SUPERSEDED by section 19] Swappable provider and Prune (D16)
 Agents only call get_llm().generate_json(). Prune is an optional provider
 (NIVRA_LLM_PROVIDER=prune) using the Anthropic SDK pointed at Prune's base
 URL, with fallbacks off. UNVERIFIED: Prune's docs don't confirm Messages API
@@ -1398,3 +1398,62 @@ D23 [DECIDED 2026-11-15] Complaints have their own lifecycle; only the user
 D24 [DECIDED 2026-11-15] Evidence is encrypted in the browser (PBKDF2 +
     AES-GCM) and stored as ciphertext; Nivra holds no key and cannot read
     or recover it.
+
+
+
+--------------------------------------------------------------------------------
+19. SWITCH TO GOOGLE GEMINI (2026-11-15)
+--------------------------------------------------------------------------------
+
+19.1 What changed
+The agents' language model is now Google Gemini, model
+"gemini-3.1-flash-lite", at the team's request (D25). The Claude provider
+and the Anthropic SDK were removed. Sections 17.13 and 17.14 (Claude and
+Prune) are superseded by this section.
+
+19.2 How it's wired (backend/app/llm/gemini_provider.py)
+Official Google Gen AI SDK (google-genai 3.3.0). Each call sends a system
+instruction, the prompt, response_mime_type "application/json" and a JSON
+schema (response_json_schema), with an output-token limit. The reply is
+parsed and then checked by the same guardrails as before (17.7).
+
+19.3 Errors and blocks
+Rate limits (429) and server errors retry; a bad key, a wrong model name
+(404) or a bad request stop and fall back to the template. A safety block
+(finish reason SAFETY / PROHIBITED_CONTENT etc.) is treated like a refusal
+and the template is used; a truncated reply (MAX_TOKENS) retries.
+
+19.4 Turning it on
+Put GEMINI_API_KEY=... (or NIVRA_GEMINI_API_KEY) in backend/.env and
+restart the API. NIVRA_LLM_PROVIDER defaults to "gemini"; without a key the
+agents quietly use templates and rules, exactly as before. Set
+NIVRA_LLM_PROVIDER=none to never call a model. backend/.env is git-ignored.
+
+19.5 What Gemini sees - unchanged
+Only the case type, platform name, legal grounds, match scores and deadline
+facts, with placeholders for links, names and dates. Never links, names,
+image labels or images (17.6). Note that Google's own data-use terms for
+the Gemini API now apply to those prompts; check them for the plan in use.
+
+19.6 Tests
+Tests never call the real model, even when backend/.env holds a key
+(conftest forces NIVRA_LLM_PROVIDER=none). Mocked-HTTP tests check the exact
+Gemini request (URL with the model name, system instruction, JSON mime type
+and schema, token limit) and the mapping of SAFETY, MAX_TOKENS, 429 and 404.
+134 backend tests pass with the Anthropic SDK uninstalled.
+
+19.7 Not verified yet
+No live Gemini call has been made: the key hasn't been added. Once it is,
+"Prepare a notice" should show "Drafted by AI (gemini-3.1-flash-lite)". If
+the model name is wrong, drafting falls back to the template and the run's
+notes show llm_error:model_not_found.
+
+19.8 Prune
+The optional Prune adapter was built on the Anthropic SDK and was removed
+with it. Prune documents an OpenAI-compatible endpoint, not Gemini's own
+API, so re-adding it would need a separate adapter (not planned).
+
+D25 [DECIDED 2026-11-15] The LLM provider is Google Gemini
+    (gemini-3.1-flash-lite) via the official google-genai SDK; Claude and
+    the Prune adapter are removed. Supersedes the provider parts of D16.
+    Why: team decision.

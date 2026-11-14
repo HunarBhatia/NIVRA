@@ -11,6 +11,8 @@ os.environ["NIVRA_DATABASE_URL"] = f"sqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["NIVRA_DATA_KEY"] = Fernet.generate_key().decode()
 os.environ["NIVRA_AUTH_RATE_LIMIT"] = "1000"
 os.environ["NIVRA_INLINE_WORKER"] = "false"
+# Never call a real model from tests, even if backend/.env holds a key.
+os.environ["NIVRA_LLM_PROVIDER"] = "none"
 os.environ["NIVRA_EVIDENCE_DIR"] = (_tmp / "evidence").as_posix()
 os.environ["NIVRA_AGENT_CHECKPOINT_PATH"] = (_tmp / "agents.db").as_posix()
 

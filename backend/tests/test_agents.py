@@ -1,11 +1,11 @@
 """The four agents: happy paths, guardrails, retries, fallbacks, approvals,
-failures, restart recovery, privacy of LLM prompts, and the Claude provider
+failures, restart recovery, privacy of LLM prompts, and the Gemini provider
 request shape (mocked HTTP - no real API calls)."""
 
 import json
 from datetime import UTC, datetime, timedelta
 
-import httpx2
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -14,7 +14,7 @@ from app.agents.runtime import LocalRuntime, reset_runtime
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.llm import LLMError
-from app.llm.anthropic_provider import AnthropicProvider
+from app.llm.gemini_provider import GeminiProvider
 from app.llm.factory import set_llm_for_tests
 from app.llm.guardrails import check_draft, check_explanation
 from app.models import CaseLink, DiscoveredMatch, DiscoveryJob, StatusEvent
@@ -313,47 +313,76 @@ def test_check_explanation_rules():
     assert check_explanation("This proves it is non-consensual.") != []
 
 
-# ---------------- Claude provider (mocked HTTP) ----------------
+# ---------------- Gemini provider (mocked HTTP) ----------------
 
-def _provider(handler) -> AnthropicProvider:
-    return AnthropicProvider(api_key="test-key", max_retries=0,
-                             http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
-
-
-def _message(text: str, stop="end_turn") -> dict:
-    return {"id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
-            "content": [{"type": "text", "text": text}], "stop_reason": stop,
-            "stop_sequence": None, "usage": {"input_tokens": 10, "output_tokens": 10}}
+def _provider(handler) -> GeminiProvider:
+    return GeminiProvider(api_key="test-key", model="gemini-3.1-flash-lite",
+                          http_client=httpx.Client(transport=httpx.MockTransport(handler)))
 
 
-def test_claude_request_shape_and_parsing():
+def _reply(text: str, finish="STOP") -> dict:
+    return {"candidates": [{"content": {"role": "model", "parts": [{"text": text}]},
+                            "finishReason": finish}],
+            "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 5}}
+
+
+def test_gemini_request_shape_and_parsing():
     seen = {}
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
         seen["body"] = json.loads(request.content)
-        seen["beta"] = request.headers.get("anthropic-beta", "")
-        return httpx2.Response(200, json=_message('{"summary": "ok"}'))
+        return httpx.Response(200, json=_reply('{"summary": "ok"}'))
 
-    out = _provider(handler).generate_json(system="s", prompt="p",
-                                           schema={"type": "object", "properties": {}})
+    schema = {"type": "object", "properties": {"summary": {"type": "string"}},
+              "required": ["summary"]}
+    out = _provider(handler).generate_json(system="be calm", prompt="facts", schema=schema,
+                                           max_tokens=1500)
     body = seen["body"]
     assert out == {"summary": "ok"}
-    assert body["model"] == "claude-opus-5-5"
-    assert body["thinking"] == {"type": "adaptive"}
-    assert body["output_config"]["format"]["type"] == "json_schema"
-    assert body["fallbacks"] == "default" and "server-side-fallback-2026-07-01" in seen["beta"]
+    assert "models/gemini-3.1-flash-lite:generateContent" in seen["url"]
+    assert body["systemInstruction"]["parts"][0]["text"] == "be calm"
+    assert body["contents"][0]["parts"][0]["text"] == "facts"
+    cfg = body["generationConfig"]
+    assert cfg["responseMimeType"] == "application/json"
+    assert cfg["responseJsonSchema"] == schema and cfg["maxOutputTokens"] == 1500
 
 
-def test_claude_refusal_and_rate_limit_mapping():
+def test_gemini_error_and_block_mapping():
+    def call(handler):
+        return _provider(handler).generate_json(system="s", prompt="p", schema={"type": "object"})
+
     with pytest.raises(LLMError) as e:
-        _provider(lambda r: httpx2.Response(200, json=_message("", "refusal"))).generate_json(
-            system="s", prompt="p", schema={})
+        call(lambda r: httpx.Response(200, json=_reply("", "SAFETY")))
     assert e.value.code == "refusal" and not e.value.retryable
     with pytest.raises(LLMError) as e:
-        _provider(lambda r: httpx2.Response(429, json={"type": "error", "error": {
-            "type": "rate_limit_error", "message": "slow"}})).generate_json(
-            system="s", prompt="p", schema={})
+        call(lambda r: httpx.Response(200, json=_reply('{"a":', "MAX_TOKENS")))
+    assert e.value.code == "truncated" and e.value.retryable
+    with pytest.raises(LLMError) as e:
+        call(lambda r: httpx.Response(429, json={"error": {"code": 429, "message": "slow",
+                                                           "status": "RESOURCE_EXHAUSTED"}}))
     assert e.value.code == "rate_limited" and e.value.retryable
+    with pytest.raises(LLMError) as e:
+        call(lambda r: httpx.Response(404, json={"error": {"code": 404, "message": "no model",
+                                                           "status": "NOT_FOUND"}}))
+    assert e.value.code == "model_not_found" and not e.value.retryable
+
+
+def test_gemini_is_the_default_provider_when_a_key_is_set(monkeypatch):
+    from app.core import config
+    from app.llm import factory
+    monkeypatch.setenv("NIVRA_LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    config.get_settings.cache_clear()
+    factory._configured.cache_clear()
+    try:
+        llm = factory.get_llm()
+        assert llm.name == "gemini" and llm.model == "gemini-3.1-flash-lite" and llm.available
+    finally:
+        monkeypatch.delenv("GEMINI_API_KEY")
+        monkeypatch.setenv("NIVRA_LLM_PROVIDER", "none")
+        config.get_settings.cache_clear()
+        factory._configured.cache_clear()
 
 
 def test_status_endpoint_reports_no_llm_by_default(client: TestClient):

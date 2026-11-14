@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,14 +60,14 @@ class Settings(BaseSettings):
     # development). In production run `python -m app.discovery.worker` instead.
     inline_worker: bool = True
 
-    # AI agents (phase 5, section 17). "none" = rules and templates only.
-    llm_provider: Literal["none", "anthropic", "prune"] = "none"
-    anthropic_api_key: str | None = None
-    llm_model: str = "claude-opus-5-5"
-    llm_effort: Literal["low", "medium", "high"] = "low"
-    # Optional Prune gateway (unverified for the Messages API; off by default).
-    prune_api_key: str | None = None
-    prune_base_url: str = "https://api.withprune.com"
+    # AI agents (phase 5, section 17; provider switched to Gemini, D25).
+    # "gemini" uses Google Gemini when a key is set (otherwise templates);
+    # "none" never calls a model.
+    llm_provider: Literal["none", "gemini"] = "gemini"
+    # Read from NIVRA_GEMINI_API_KEY, or plain GEMINI_API_KEY.
+    gemini_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("NIVRA_GEMINI_API_KEY", "GEMINI_API_KEY"))
+    llm_model: str = "gemini-3.1-flash-lite"
     # Where paused agent runs (awaiting approval) are saved.
     agent_checkpoint_path: str = "./nivra-agents.db"
     # Where agents run: in this backend ("local") or on Maritime (optional).

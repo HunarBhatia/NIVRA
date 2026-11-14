@@ -105,7 +105,7 @@ To test discovery against a page on your own machine, start the API with `NIVRA_
 | GET | `/api/agents/runs`, `/api/agents/runs/{id}` | Runs, optionally filtered by `agent` and `subject_id` |
 | POST | `/api/agents/runs/{id}/decision` | `approve` (optionally `approved_ids`) or `reject` |
 
-AI drafting is off by default (`NIVRA_LLM_PROVIDER=none`): agents use templates and rules. To use Claude, set `NIVRA_LLM_PROVIDER=anthropic` and `NIVRA_ANTHROPIC_API_KEY`. The model only ever receives the case type, platform and legal grounds, never links, names or images.
+AI drafting uses Google Gemini (`gemini-3.1-flash-lite` by default). Put `GEMINI_API_KEY=...` in `backend/.env` and restart the API. Without a key the agents use Nivra's templates and rules; set `NIVRA_LLM_PROVIDER=none` to never call a model. The model only ever receives the case type, platform and legal grounds, never links, names or images. Tests never call the real model, even when a key is set.
 
 ## API (phase 6: complaints, evidence, overview)
 

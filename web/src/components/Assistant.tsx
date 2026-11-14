@@ -26,7 +26,7 @@ export function SourceNote({ usedLlm, status }: { usedLlm: boolean; status: Agen
   if (usedLlm) {
     return (
       <p className="small muted">
-        Drafted by AI ({status?.model ?? "Claude"}). It was sent only the case type and platform,
+        Drafted by AI ({status?.model ?? "Gemini"}). It was sent only the case type and platform,
         never your name, links or images. Please read it before using it.
       </p>
     );
