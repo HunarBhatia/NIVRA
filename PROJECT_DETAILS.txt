@@ -213,11 +213,16 @@ Plan: build an MVP that is almost free to run (user links + notice generation
 6. PRODUCT FORM FACTOR
 --------------------------------------------------------------------------------
 
-6.1 Web app / PWA - core product [PROPOSED]
-Works on any phone without installing anything, which matters because most
-victims (especially in India) will find Nivra on mobile, often in a hurry.
-A Progressive Web App can later be "installed" to the home screen and look
-like a native app.
+6.1 Website - the core product [DECIDED - see D4]
+Nivra is a website, not an app. It opens in any browser on phone or laptop
+with nothing to install. Pages are responsive (they adapt to small screens)
+because many victims will find Nivra on their phone, often in a hurry.
+We deliberately do not push "install this app" (no PWA, no app store).
+
+6.1a Why a website and not an app
+No install means no app icon on the phone for someone else to spot, which
+matters for a victim's privacy. It is also one codebase, needs no app-store
+review, and can be shared as a simple link by NGOs, friends or police.
 
 6.2 Chrome extension - companion [PROPOSED, phase 2]
 Right-click any image on any page -> "Report with Nivra". It captures the
@@ -236,9 +241,10 @@ A lot of leaked content in India spreads on Telegram. A bot that accepts a
 forwarded link and opens a case meets users where the harm happens. Worth
 considering after the web app is stable.
 
-6.5 Native mobile app [REJECTED for now]
-App-store review, two codebases, and installation friction. The PWA covers
-the same need until we have real users asking for native features.
+6.5 Mobile app / PWA [REJECTED]
+App-store review, two codebases, installation friction, and a visible icon
+on the victim's phone. The team prefers a pure website; a responsive site
+covers phone users without any of these downsides.
 
 
 --------------------------------------------------------------------------------
@@ -284,7 +290,7 @@ statuses and the minimum contact info needed. If we're ever breached, the
 leaked data should be close to useless to an attacker.
 
 8.2 Frontend
-Next.js (React) + TypeScript + Tailwind CSS, delivered as a PWA. Next.js
+Next.js (React) + TypeScript + Tailwind CSS, as a responsive website. Next.js
 gives us routing, server rendering for fast first load on slow phones, and
 API routes in the same project. TypeScript catches bugs early.
 
@@ -468,7 +474,9 @@ D3  [DECIDED 2026-11-14] Images never leave the user's device; the server
     Why: removes breach risk and the risk of holding illegal material. It
     also makes "launch for real" possible without a legal team.
 
-D4  [DECIDED 2026-11-14] Form factor: mobile-first web app (PWA). Chrome
+D4  [DECIDED 2026-11-14, revised same day] Form factor: a website that
+    works well on phones and laptops - NOT an app or PWA (team preference;
+    also no tell-tale app icon on a victim's phone). Chrome
     extension in phase 2. Agent skill rejected as the main product.
 
 D5  [DECIDED 2026-11-14] MVP discovery: user-pasted links + assisted reverse
@@ -515,4 +523,6 @@ Perceptual hash (pHash, PDQ) - a hash that stays similar even if the image is
 De-indexing - removing a page from search results without removing the page.
 Grievance Officer - the person Indian platforms must name to handle complaints.
 PWA - Progressive Web App; a website that can be installed like an app.
+  Nivra deliberately does NOT do this (see D4).
+Responsive - a page layout that adapts to the screen size (phone/laptop).
 CDN - Content Delivery Network (e.g. Cloudflare) that sits in front of sites.
