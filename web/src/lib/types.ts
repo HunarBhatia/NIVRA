@@ -68,6 +68,14 @@ export interface Platform {
   channels: ReportChannel[];
   inAppSteps?: string[];
   notes?: string;
+  requiredInfo: string[];
+  requiredEvidence: string[];
+  /** How the platform tells you what happened (section 18.4). */
+  statusTracking: "email" | "in_app" | "ticket" | "none";
+  trackingNote?: string;
+  /** False until a person has checked the details on the platform's site. */
+  verified: boolean;
+  lastVerified: string | null;
 }
 
 // ---------- Protected images (phase 3) ----------
@@ -159,3 +167,78 @@ export interface AgentRun {
   preview?: DraftText;
   previews?: (DraftText & { id: string; link_id: string; kind: string; source: string })[];
 }
+
+// ---------- Complaints, evidence, overview (phase 6) ----------
+
+export type ComplaintStatus =
+  | "draft_generated"
+  | "user_approved"
+  | "submitted_by_user"
+  | "submission_confirmed"
+  | "response_received"
+  | "resolved"
+  | "rejected"
+  | "discarded";
+
+export interface Complaint {
+  id: string;
+  case_id: string;
+  link_id: string;
+  status: ComplaintStatus;
+  status_label: string;
+  next_statuses: ComplaintStatus[];
+  source: "llm" | "template" | "manual";
+  platform_id: string | null;
+  platform_name: string | null;
+  subject: string;
+  body: string;
+  reference: string | null;
+  channel_kind: string | null;
+  channel_label: string | null;
+  submitted_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  events: { at: string; status: ComplaintStatus; note: string | null }[];
+}
+
+export interface TimelineItem {
+  at: string;
+  type: "link" | "complaint" | "evidence" | "match";
+  host: string | null;
+  link_id: string | null;
+  status: string;
+  text: string;
+}
+
+export interface Overview {
+  protected_images: number;
+  active_monitoring: number;
+  checks_running: number;
+  matches_found: number;
+  matches_to_review: number;
+  confirmed_incidents: number;
+  drafts: number;
+  submitted: number;
+  pending_responses: number;
+  resolved: number;
+  links_removed: number;
+  approvals_waiting: number;
+  cases: { id: string; category: Category; created_at: string; links: number; removed: number }[];
+}
+
+export type EvidenceKind = "screenshot" | "file" | "note" | "account" | "message";
+
+export interface EvidenceItemRaw {
+  id: string;
+  case_id: string;
+  link_id: string | null;
+  kind: EvidenceKind;
+  enc_meta: string;
+  has_blob: boolean;
+  size: number;
+  created_at: string;
+}
+
+export type LockerInfo =
+  | { initialized: false }
+  | { initialized: true; salt: string; key_check: string; kdf: string };

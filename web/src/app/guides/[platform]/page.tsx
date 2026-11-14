@@ -41,6 +41,30 @@ export default async function PlatformGuide({ params }: PageProps<"/guides/[plat
         </p>
       </div>
 
+      {!p.verified && (
+        <p className="well well--clay small">
+          These details haven&apos;t been verified yet. Platforms change their reporting pages
+          often, so check on {p.name}&apos;s own site.
+        </p>
+      )}
+
+      <section className="stack">
+        <h2>What they&apos;ll ask for</h2>
+        <ul style={{ paddingLeft: "1.2rem" }}>
+          {p.requiredInfo.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+        <h3>Evidence to have ready</h3>
+        <ul style={{ paddingLeft: "1.2rem" }}>
+          {p.requiredEvidence.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+        <h3>How you&apos;ll hear back</h3>
+        <p className="small">{p.trackingNote ?? "Not known."}</p>
+      </section>
+
       {p.inAppSteps && (
         <section className="stack">
           <h2>Steps</h2>

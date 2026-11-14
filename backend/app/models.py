@@ -270,3 +270,91 @@ class AgentRun(Base):
     error_code: Mapped[str | None] = mapped_column(String(32), default=None)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+# ---------- Phase 6: complaints and evidence ----------
+
+
+class Complaint(Base):
+    """One takedown request for one link, with its full lifecycle (18.5):
+
+    draft_generated -> user_approved -> submitted_by_user -> submission_confirmed
+    -> response_received -> resolved | rejected   (discarded = dropped draft)
+
+    Every step after a draft is recorded by the USER. Nivra never claims a
+    complaint was submitted or resolved on its own.
+    """
+
+    __tablename__ = "complaints"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    link_id: Mapped[str] = mapped_column(ForeignKey("case_links.id", ondelete="CASCADE"), index=True)
+    platform_id: Mapped[str | None] = mapped_column(String(32), default=None)
+    status: Mapped[str] = mapped_column(String(24), default="draft_generated")
+    source: Mapped[str] = mapped_column(String(16), default="template")  # llm|template|manual
+    agent_run_id: Mapped[str | None] = mapped_column(String(32), default=None, index=True)
+    subject: Mapped[str] = mapped_column(String(300))
+    # May contain {{URL}}/{{NAME}}/{{DATE}} placeholders, filled when shown.
+    body: Mapped[str] = mapped_column(Text)
+    channel_kind: Mapped[str | None] = mapped_column(String(16), default=None)
+    channel_label: Mapped[str | None] = mapped_column(String(120), default=None)
+    reference: Mapped[str | None] = mapped_column(String(120), default=None)  # ticket/case no.
+    submitted_at: Mapped[datetime | None] = mapped_column(default=None)
+    resolved_at: Mapped[datetime | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    events: Mapped[list["ComplaintEvent"]] = relationship(
+        back_populates="complaint", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="ComplaintEvent.at",
+    )
+
+
+class ComplaintEvent(Base):
+    __tablename__ = "complaint_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    complaint_id: Mapped[str] = mapped_column(
+        ForeignKey("complaints.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(24))
+    note: Mapped[str | None] = mapped_column(String(280), default=None)
+    at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    complaint: Mapped[Complaint] = relationship(back_populates="events")
+
+
+class EvidenceLocker(Base):
+    """Per-account settings for the evidence locker. The key is derived in the
+    browser from the user's passphrase + `salt`; `key_check` is a known value
+    encrypted with that key, so the browser can tell a wrong passphrase. The
+    server never sees the key (18.6)."""
+
+    __tablename__ = "evidence_lockers"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    salt: Mapped[str] = mapped_column(String(64))
+    key_check: Mapped[str] = mapped_column(Text)
+    kdf: Mapped[str] = mapped_column(String(48), default="PBKDF2-SHA256-600000/AES-GCM-256")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class EvidenceItem(Base):
+    """One piece of evidence. The file AND its description (`enc_meta`) are
+    ciphertext; the server only knows its kind, size, case and time."""
+
+    __tablename__ = "evidence_items"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), index=True)
+    link_id: Mapped[str | None] = mapped_column(
+        ForeignKey("case_links.id", ondelete="SET NULL"), default=None
+    )
+    kind: Mapped[str] = mapped_column(String(16))  # screenshot|file|note|account|message
+    enc_meta: Mapped[str] = mapped_column(Text)
+    has_blob: Mapped[bool] = mapped_column(Boolean, default=False)
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)

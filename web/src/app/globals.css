@@ -835,3 +835,21 @@ input[type="file"]::file-selector-button {
   margin-right: var(--space-sm);
   cursor: pointer;
 }
+
+/* ---------- Dashboard stat grid (figure + label, no icons) ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr));
+  gap: var(--space-md) var(--space-lg);
+  border-top: var(--rule-hair) solid var(--color-rule-2);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  padding-block: var(--space-lg);
+}
+.stats div {
+  display: grid;
+}
+.stats strong {
+  font: var(--display-weight) 2.25rem / 1 var(--font-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--color-ink);
+}

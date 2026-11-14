@@ -1269,3 +1269,132 @@ D20 [DECIDED 2026-11-15] AI drafting is off by default and works from
 
 D21 [DECIDED 2026-11-15] The Discovery Coordinator uses no LLM.
     Why: deciding which sites to visit must be rule-based and explainable.
+
+
+
+--------------------------------------------------------------------------------
+18. PHASE 6 - INCIDENTS, COMPLAINTS AND EVIDENCE (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+18.1 What was built
+A Dashboard (/dashboard) that brings everything together; complaints with
+a full lifecycle per link; an encrypted evidence locker per case; a case
+timeline; and a richer, shared platform directory.
+
+18.2 The Dashboard
+Shows protected images, active monitoring, matches found and waiting for
+review, cases, notices drafted, complaints sent, waiting for a reply and
+removed - plus a "Needs your attention" list (matches to review, approvals
+waiting, replies pending) and every case with an Open button. It replaces
+"My case" in the menu; each case opens from there.
+
+18.3 One platform file for website and backend [DECIDED - D22]
+shared/platforms.json is the single source of truth. The backend reads it;
+the website copies it into web/src/data before every dev/build
+(scripts/sync-platforms.mjs). A backend test fails if the two copies ever
+differ, so they can't drift apart silently.
+
+18.4 What each platform entry defines
+Name, domains, deadline (hours), reporting mechanisms (form / email /
+in-app, with targets), what the platform will ask for, evidence to have
+ready, step-by-step submission instructions, and how the user hears back
+(email / in-app / ticket / none). Each has verified=false and
+last_verified=null until a person checks it; the guide pages say so.
+
+18.5 Complaint lifecycle [DECIDED - D23]
+draft_generated -> user_approved -> submitted_by_user ->
+submission_confirmed -> response_received -> resolved | rejected (plus
+discarded for dropped drafts). The server enforces the order. Only the user
+records submission and outcomes - Nivra never claims a complaint was sent,
+received or resolved on its own.
+
+18.6 How complaints are created
+Two ways: "Use this notice" on Nivra's template, which starts at "Approved
+by you"; or the assistant, whose draft is a complaint in "Draft generated"
+- approving it in the Assistant box moves it to "Approved by you",
+discarding moves it to "discarded" (hidden). Platform, reference/ticket
+number and where it was sent are recorded.
+
+18.7 Complaints keep link statuses in step
+"Submitted by you" marks the link as reported (starting its 24-hour clock),
+"Removed / resolved" marks it removed, "Rejected" marks it refused - but
+only where the link's own status rules allow that move. Each also adds a
+line to the link's history.
+
+18.8 The case timeline
+One newest-first list per case: link changes, complaint steps, evidence
+added (kind only - never content) and matches added from discovery. A
+complaint step is shown once, not again as its mirrored link entry (a
+duplicate bug found in browser testing and fixed, with a test).
+
+18.9 The evidence locker (decision D9 fulfilled) [DECIDED - D24]
+Per case: screenshots, files, notes, the uploader's account, messages.
+Everything is encrypted IN THE BROWSER before upload; the server stores
+ciphertext it cannot read. It knows only each item's kind, size, case and
+time. Nivra cannot open it, and can't recover it if the passphrase is lost.
+
+18.10 How the locker's encryption works
+Key = PBKDF2-SHA256 (600,000 rounds) of the passphrase + a random salt, as
+a non-extractable AES-GCM 256-bit key held in memory for that page only.
+Each item and its description are encrypted with AES-GCM and a fresh
+12-byte IV. A known "key check" value encrypted at setup lets the browser
+reject a wrong passphrase. Lock, closing the tab or Quick exit forgets the key.
+
+18.11 Locker storage and deletion
+Ciphertext files live in NIVRA_EVIDENCE_DIR (never web-served), named by
+random IDs, created with owner-only permissions. Max ~7 MB per file,
+200 MB per account. Deleting an item, a case or the whole account deletes
+the files on disk too (database cascades alone wouldn't).
+
+18.12 Evidence report
+"Download evidence report" builds an HTML file on the user's device: case
+type, every link with its history, complaints with their steps and
+references, and each saved item with its description and the SHA-256
+fingerprint of the original file. It doesn't include the images.
+
+18.13 Verified in the browser
+Template notice -> "I've submitted it" (with a ticket number) -> "It's been
+removed": the link went from "Not reported yet" to "Waiting for reply" to
+"Removed". Locker: set up, saved a note and a PNG; the server held 1,579
+bytes for a 1,551-byte PNG (IV + auth tag), with no PNG signature and no
+readable text; the screenshot decrypted back to the original; a wrong
+passphrase was refused; the report contained the links, hashes and notes.
+
+18.14 Problems found while testing
+The duplicate timeline entries (18.8). The Next.js dev server kept serving
+an old CSS bundle after edits - file watching is unreliable inside this
+OneDrive folder; fixed by deleting web/.next and restarting. If the site
+looks out of date: stop the dev server, delete web/.next, start it again.
+
+18.15 API added
+Complaints: GET /api/cases/{id}/complaints, POST /api/links/{id}/complaints,
+POST /api/complaints/{id}/status, DELETE /api/complaints/{id}. Timeline:
+GET /api/cases/{id}/timeline. Overview: GET /api/overview. Platforms: GET
+/api/platforms, /api/platforms/{id}. Evidence: GET/POST /api/evidence/locker,
+GET/POST /api/cases/{id}/evidence, GET /api/evidence/{id}/blob, DELETE
+/api/evidence/{id}.
+
+18.16 Tests (133+ backend tests passing)
+Shared platform file in sync and complete; complaint lifecycle and link
+updates; no skipping steps; no discarding after sending; rejection; hidden
+discards; assistant drafts become complaints; privacy; locker setup once;
+payload rules; server stores exactly the ciphertext; size limit; file
+removal on item/case/account delete; evidence privacy; cross-case links
+refused; timeline order and de-duplication; overview counts.
+
+18.17 Limits and open points
+Platform details are still unverified prototype data. The locker uses the
+account passphrase; changing a passphrase (not built yet) would need
+re-encrypting the locker. Evidence of under-18 images must never be stored
+- the under-18 route stops before any case exists, but encrypted files
+can't be inspected, so this relies on that route and the terms of use.
+
+D22 [DECIDED 2026-11-15] shared/platforms.json is the single platform
+    directory for website and backend, checked for drift by a test.
+
+D23 [DECIDED 2026-11-15] Complaints have their own lifecycle; only the user
+    records submission and outcomes, and complaint steps drive link status.
+
+D24 [DECIDED 2026-11-15] Evidence is encrypted in the browser (PBKDF2 +
+    AES-GCM) and stored as ciphertext; Nivra holds no key and cannot read
+    or recover it.

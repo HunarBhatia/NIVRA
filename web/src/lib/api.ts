@@ -6,6 +6,13 @@ import type {
   AgentRun,
   AgentStatus,
   CaseLink,
+  Complaint,
+  ComplaintStatus,
+  EvidenceItemRaw,
+  EvidenceKind,
+  LockerInfo,
+  Overview,
+  TimelineItem,
   CaseSummary,
   DiscoveredMatch,
   DiscoveryJob,
@@ -208,3 +215,52 @@ export const listAgentRuns = (agent: string, subjectId?: string) =>
       subjectId ? `&subject_id=${encodeURIComponent(subjectId)}` : ""
     }`,
   );
+
+// ---------- Complaints, timeline, overview (phase 6) ----------
+
+export const listComplaints = (caseId: string) =>
+  call<Complaint[]>(`/cases/${encodeURIComponent(caseId)}/complaints`);
+
+export const createComplaint = (linkId: string, subject: string, body: string) =>
+  call<Complaint>(
+    `/links/${encodeURIComponent(linkId)}/complaints`,
+    json("POST", { subject, body, source: "template" }),
+  );
+
+export const updateComplaint = (
+  id: string,
+  update: {
+    status: ComplaintStatus;
+    note?: string;
+    reference?: string;
+    channel_kind?: string;
+    channel_label?: string;
+  },
+) => call<Complaint>(`/complaints/${encodeURIComponent(id)}/status`, json("POST", update));
+
+export const getTimeline = (caseId: string) =>
+  call<TimelineItem[]>(`/cases/${encodeURIComponent(caseId)}/timeline`);
+
+export const getOverview = () => call<Overview>("/overview");
+
+// ---------- Evidence locker (phase 6) ----------
+// Everything sent here is already encrypted in the browser (lib/evidenceCrypto).
+
+export const getLocker = () => call<LockerInfo>("/evidence/locker");
+
+export const createLocker = (salt: string, keyCheck: string) =>
+  call<{ initialized: true }>("/evidence/locker", json("POST", { salt, key_check: keyCheck }));
+
+export const listEvidence = (caseId: string) =>
+  call<EvidenceItemRaw[]>(`/cases/${encodeURIComponent(caseId)}/evidence`);
+
+export const addEvidence = (
+  caseId: string,
+  item: { kind: EvidenceKind; link_id?: string | null; enc_meta: string; blob?: string },
+) => call<EvidenceItemRaw>(`/cases/${encodeURIComponent(caseId)}/evidence`, json("POST", item));
+
+export const getEvidenceBlob = (id: string) =>
+  call<{ blob: string }>(`/evidence/${encodeURIComponent(id)}/blob`);
+
+export const deleteEvidence = (id: string) =>
+  call<void>(`/evidence/${encodeURIComponent(id)}`, json("DELETE"));

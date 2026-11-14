@@ -69,6 +69,8 @@ export function NoticeAssistant({
     setError("");
     try {
       setRun(await fn());
+      // Drafts and approvals create/update tracked complaints (section 18.5).
+      window.dispatchEvent(new Event("nivra:complaints-changed"));
     } catch (e) {
       setError(errorText(e));
     } finally {

@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.security import EncryptionUnavailable, encrypt_field, verify_passphrase
 from app.schemas import AccountDeleteIn, AccountOut, AccountUpdateIn
 from app.services import audit
+from app.services.evidence_store import blob_ids, delete_blobs
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 settings = get_settings()
@@ -36,9 +37,11 @@ def delete_account(body: AccountDeleteIn, user: CurrentUser, response: Response,
     Requires the passphrase again so a stolen session can't wipe the account."""
     if not verify_passphrase(user.passphrase_hash, body.passphrase):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "That passphrase isn't right.")
+    files = blob_ids(db, user_id=user.id)
     audit.record(db, "account.deleted")  # anonymous: no user id kept
     db.delete(user)
     db.commit()
+    delete_blobs(files)  # encrypted evidence files on disk
     response.delete_cookie(settings.session_cookie_name, path="/")
     response.status_code = 204
     return response

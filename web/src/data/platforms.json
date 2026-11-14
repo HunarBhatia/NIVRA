@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "note": "PROTOTYPE DATA. Every link, step and expectation here must be checked on the platform's own site before it is presented as authoritative. 'verified' stays false until a person has checked it and set 'last_verified'.",
+  "platforms": [
+    {
+      "id": "instagram",
+      "name": "Instagram",
+      "owner": "Meta",
+      "domains": ["instagram.com", "instagr.am"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside the Instagram app" },
+        { "kind": "form", "label": "Instagram Help Centre", "target": "https://help.instagram.com/" }
+      ],
+      "required_info": [
+        "The exact link to the post or profile",
+        "What the content is (for example, an intimate image shared without consent)",
+        "That you are the person shown, or are authorised to act for them"
+      ],
+      "required_evidence": ["A private screenshot showing the content and its web address"],
+      "submission_steps": [
+        "Open the post or profile and tap the three dots.",
+        "Tap Report, then choose the option about nudity or someone sharing private images.",
+        "If it is a fake account, choose 'Pretending to be someone' and pick 'Me'.",
+        "Paste the notice from Nivra into any free-text box you are offered."
+      ],
+      "status_tracking": "in_app",
+      "tracking_note": "Replies usually appear in the app's support requests area.",
+      "notes": "Meta is a StopNCII partner: registering your image there blocks re-uploads.",
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "facebook",
+      "name": "Facebook",
+      "owner": "Meta",
+      "domains": ["facebook.com", "fb.com", "fb.watch", "m.facebook.com"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside Facebook" },
+        { "kind": "form", "label": "Facebook Help Centre", "target": "https://www.facebook.com/help/" }
+      ],
+      "required_info": [
+        "The exact link to the post, photo or profile",
+        "What the content is",
+        "That you are the person shown, or are authorised to act for them"
+      ],
+      "required_evidence": ["A private screenshot showing the content and its web address"],
+      "submission_steps": [
+        "Open the post, photo or profile and click the three dots.",
+        "Choose Report, then the option about nudity, private images or impersonation.",
+        "Follow the steps and add the notice text where you can."
+      ],
+      "status_tracking": "in_app",
+      "tracking_note": "Replies usually appear in your Support Inbox.",
+      "notes": "Meta is a StopNCII partner.",
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "owner": "Meta",
+      "domains": ["whatsapp.com", "wa.me", "chat.whatsapp.com"],
+      "expected_hours": 24,
+      "mechanisms": [{ "kind": "in-app", "label": "Report inside WhatsApp" }],
+      "required_info": ["The chat or group where it was shared"],
+      "required_evidence": ["A private screenshot of the message, with the sender visible"],
+      "submission_steps": [
+        "Open the chat or group, tap its name at the top.",
+        "Scroll down and tap Report. Choose to keep the last messages so WhatsApp can review them.",
+        "WhatsApp cannot see message content otherwise, so reporting is the main route."
+      ],
+      "status_tracking": "none",
+      "tracking_note": "WhatsApp usually doesn't send a reply about individual reports.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "x",
+      "name": "X (Twitter)",
+      "owner": null,
+      "domains": ["x.com", "twitter.com", "t.co"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside X" },
+        { "kind": "form", "label": "X help forms", "target": "https://help.x.com/en/forms" }
+      ],
+      "required_info": ["The exact link to the post", "What the content is"],
+      "required_evidence": ["A private screenshot showing the post and its web address"],
+      "submission_steps": [
+        "Open the post and tap the three dots, then Report post.",
+        "Choose the option about sensitive or private media of you."
+      ],
+      "status_tracking": "email",
+      "tracking_note": "Replies usually arrive by email.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "owner": null,
+      "domains": ["reddit.com", "redd.it", "old.reddit.com"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside Reddit" },
+        { "kind": "form", "label": "Reddit report form", "target": "https://www.reddit.com/report" }
+      ],
+      "required_info": ["The exact link to the post", "What the content is"],
+      "required_evidence": ["A private screenshot showing the post and its web address"],
+      "submission_steps": [
+        "Open the post, tap the three dots and choose Report.",
+        "Choose 'Non-consensual intimate media' and follow the steps."
+      ],
+      "status_tracking": "email",
+      "tracking_note": "Replies usually arrive by email or Reddit message.",
+      "notes": "Reddit is a StopNCII partner.",
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "owner": "Google",
+      "domains": ["youtube.com", "youtu.be", "m.youtube.com"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside YouTube" },
+        { "kind": "form", "label": "YouTube Help", "target": "https://support.google.com/youtube/" }
+      ],
+      "required_info": ["The exact link to the video", "The time in the video where you appear"],
+      "required_evidence": ["A private screenshot of the video page and its web address"],
+      "submission_steps": [
+        "Under the video, tap the three dots and choose Report.",
+        "For a privacy violation, use YouTube's privacy complaint process from the Help Centre."
+      ],
+      "status_tracking": "email",
+      "tracking_note": "Replies usually arrive by email.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "owner": null,
+      "domains": ["t.me", "telegram.me", "telegram.org"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside Telegram" },
+        { "kind": "email", "label": "Email Telegram's abuse team", "target": "abuse@telegram.org" }
+      ],
+      "required_info": ["The t.me link to the channel or message", "What the content is"],
+      "required_evidence": ["A private screenshot of the message and the channel name"],
+      "submission_steps": [
+        "Open the channel or message, tap the three dots and choose Report.",
+        "Also email the notice with the t.me link to Telegram's abuse address."
+      ],
+      "status_tracking": "none",
+      "tracking_note": "Telegram often doesn't reply; check the link yourself to see if it was removed.",
+      "notes": "Leaks spread fast on Telegram channels. Report the channel as well as single posts.",
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "snapchat",
+      "name": "Snapchat",
+      "owner": null,
+      "domains": ["snapchat.com"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside Snapchat" },
+        { "kind": "form", "label": "Snapchat Support", "target": "https://help.snapchat.com/" }
+      ],
+      "required_info": ["The username that shared it", "What the content is"],
+      "required_evidence": ["A private screenshot of the Snap or profile"],
+      "submission_steps": ["Press and hold the Snap or profile, then tap Report."],
+      "status_tracking": "none",
+      "tracking_note": "Snapchat may not reply to in-app reports.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "owner": null,
+      "domains": ["discord.com", "discord.gg"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside Discord" },
+        { "kind": "form", "label": "Discord Trust & Safety", "target": "https://dis.gd/request" }
+      ],
+      "required_info": ["A link to the message (Copy Message Link)", "The server name"],
+      "required_evidence": ["A private screenshot of the message"],
+      "submission_steps": ["Right-click the message, choose Copy Message Link, and include it in the report."],
+      "status_tracking": "ticket",
+      "tracking_note": "The web form creates a ticket; replies arrive by email.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "linkedin",
+      "name": "LinkedIn",
+      "owner": null,
+      "domains": ["linkedin.com", "lnkd.in"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "in-app", "label": "Report inside LinkedIn" },
+        { "kind": "form", "label": "LinkedIn Help", "target": "https://www.linkedin.com/help/linkedin" }
+      ],
+      "required_info": ["The link to the fake profile"],
+      "required_evidence": ["A private screenshot of the profile"],
+      "submission_steps": ["Open the profile, click More, then Report / Block, and choose fake profile."],
+      "status_tracking": "in_app",
+      "tracking_note": "LinkedIn may notify you in the app.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "tinder",
+      "name": "Tinder",
+      "owner": null,
+      "domains": ["tinder.com"],
+      "expected_hours": 24,
+      "mechanisms": [{ "kind": "form", "label": "Tinder Help", "target": "https://www.help.tinder.com/" }],
+      "required_info": ["The profile name and any details shown", "That the photos are yours"],
+      "required_evidence": ["A private screenshot of the profile"],
+      "submission_steps": ["Use Tinder's help form and choose the option about a fake profile."],
+      "status_tracking": "email",
+      "tracking_note": "Replies usually arrive by email.",
+      "notes": null,
+      "verified": false,
+      "last_verified": null
+    },
+    {
+      "id": "pornhub",
+      "name": "Pornhub",
+      "owner": "Aylo",
+      "domains": ["pornhub.com"],
+      "expected_hours": 24,
+      "mechanisms": [
+        { "kind": "form", "label": "Content removal request", "target": "https://www.pornhub.com/content-removal" }
+      ],
+      "required_info": ["The exact link to the video or image", "That there was no consent"],
+      "required_evidence": ["A private screenshot showing the page and its web address"],
+      "submission_steps": ["Use the content removal request form and paste the notice."],
+      "status_tracking": "email",
+      "tracking_note": "Replies usually arrive by email.",
+      "notes": "Adult sites often remove fastest when the notice says clearly that there was no consent.",
+      "verified": false,
+      "last_verified": null
+    }
+  ]
+}

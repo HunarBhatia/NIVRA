@@ -19,6 +19,7 @@ from app.schemas import (
     StatusChangeIn,
 )
 from app.services import audit
+from app.services.evidence_store import blob_ids, delete_blobs
 from app.services.links import InvalidUrl, can_transition, normalise_url
 
 router = APIRouter(prefix="/api", tags=["cases"])
@@ -109,9 +110,11 @@ def update_case(case_id: str, body: CaseUpdateIn, user: CurrentUser, db: DB) -> 
 @router.delete("/cases/{case_id}", status_code=204)
 def delete_case(case_id: str, user: CurrentUser, db: DB) -> Response:
     case = _own_case(db, user, case_id)
+    files = blob_ids(db, case_id=case.id)
     audit.record(db, "case.deleted", user.id, "case", case.id)
     db.delete(case)
     db.commit()
+    delete_blobs(files)  # encrypted evidence files on disk
     return Response(status_code=204)
 
 

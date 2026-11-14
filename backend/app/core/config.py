@@ -4,6 +4,7 @@ Nothing secret has a default here. See .env.example for every setting.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -73,6 +74,15 @@ class Settings(BaseSettings):
     maritime_api_key: str | None = None
     maritime_agent_id: str | None = None
     maritime_base_url: str = "https://api.maritime.sh"
+
+    # Shared platform directory (section 18.3).
+    platforms_file: str = str(Path(__file__).resolve().parents[3] / "shared" / "platforms.json")
+
+    # Evidence locker (section 18.6). Files are encrypted in the browser; the
+    # server only ever stores ciphertext it cannot read.
+    evidence_dir: str = "./evidence-store"
+    evidence_max_item_bytes: int = 10_000_000  # ciphertext, ~7 MB original
+    evidence_quota_bytes: int = 200_000_000  # per account
 
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True

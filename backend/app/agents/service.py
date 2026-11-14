@@ -12,8 +12,9 @@ from app.agents.runtime import get_runtime
 from app.agents.verification_assistant import DISCLAIMER
 from app.llm import get_llm
 from app.llm.guardrails import fill
-from app.models import AgentRun, Case, CaseLink, User
+from app.models import AgentRun, Case, CaseLink, Complaint, User
 from app.services import audit
+from app.services import complaints as complaint_svc
 
 log = logging.getLogger("nivra.agents")
 
@@ -34,11 +35,19 @@ def _finish(db: Session, run: AgentRun, result: dict[str, Any]) -> AgentRun:
     if payload is not None:
         run.status = "awaiting_approval"
         run.output = payload
+        if run.agent == "complaint":
+            _record_draft(db, run, state)
     else:
         if run.agent == "complaint":
             run.status = "completed" if state.get("status") == "approved" else "rejected"
             run.output = {"draft": state.get("draft"), "source": state.get("source"),
                           "approved": state.get("status") == "approved"}
+            complaint = db.query(Complaint).filter_by(agent_run_id=run.id).first()
+            if complaint and complaint.status == "draft_generated":
+                complaint_svc.transition(
+                    db, complaint, "user_approved" if run.status == "completed" else "discarded")
+            if complaint:
+                run.output["complaint_id"] = complaint.id
         elif run.agent == "verification":
             run.status = "completed"
             run.output = {k: state.get(k) for k in
@@ -59,6 +68,18 @@ def _finish(db: Session, run: AgentRun, result: dict[str, Any]) -> AgentRun:
     audit.record(db, f"agent.{run.agent}.{run.status}", run.user_id, "agent_run", run.id)
     db.commit()
     return run
+
+
+def _record_draft(db: Session, run: AgentRun, state: dict[str, Any]) -> None:
+    """An assistant draft becomes a complaint in 'draft_generated' (18.5)."""
+    link = db.get(CaseLink, state.get("link_id"))
+    draft = state.get("draft") or {}
+    if link and draft and not db.query(Complaint).filter_by(agent_run_id=run.id).first():
+        c = complaint_svc.create(db, user_id=run.user_id, link=link, subject=draft["subject"],
+                                 body=draft["body"], source=state.get("source", "template"),
+                                 status="draft_generated", agent_run_id=run.id)
+        db.flush()
+        run.output = {**(run.output or {}), "complaint_id": c.id}
 
 
 def start_run(db: Session, user: User, agent: str, state: dict[str, Any],

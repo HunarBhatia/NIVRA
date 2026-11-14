@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AccountGate from "@/components/AccountGate";
 import { FollowUpAssistant, NoticeAssistant } from "@/components/Assistant";
+import CaseTimeline from "@/components/CaseTimeline";
+import ComplaintTracker, { COMPLAINTS_CHANGED, announceComplaintsChanged } from "@/components/ComplaintTracker";
+import EvidenceLocker from "@/components/EvidenceLocker";
 import * as api from "@/lib/api";
 import { ApiError, isOverdue } from "@/lib/api";
 import { CATEGORY_LABEL, generateNotice } from "@/lib/notices";
@@ -15,7 +18,7 @@ import {
   resolvePlatform,
   splitLinks,
 } from "@/lib/platforms";
-import type { Account, CaseLink, CaseSummary, LinkStatus, NivraCase, Platform } from "@/lib/types";
+import type { Account, CaseLink, CaseSummary, Complaint, LinkStatus, NivraCase, Platform } from "@/lib/types";
 
 // The account dashboard (/case). Logged out: the unlock form. Logged in: the
 // account's cases, each link with its notice, status and next step. All data
@@ -56,7 +59,7 @@ export default function CaseView() {
   useEffect(() => {
     // Loading data from the server once on mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
+    void load(window.location.hash.slice(1) || undefined);
   }, [load]);
 
   async function lock() {
@@ -169,6 +172,32 @@ function Dashboard({
   const [name, setName] = useState(c.display_name);
   const [nameSaved, setNameSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [version, setVersion] = useState(0);
+
+  const refreshComplaints = useCallback(() => {
+    api.listComplaints(c.id).then(setComplaints).catch(() => {});
+    setVersion((v) => v + 1);
+  }, [c.id]);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .listComplaints(c.id)
+      .then((list) => alive && setComplaints(list))
+      .catch(() => {});
+    window.addEventListener(COMPLAINTS_CHANGED, refreshComplaints);
+    return () => {
+      alive = false;
+      window.removeEventListener(COMPLAINTS_CHANGED, refreshComplaints);
+    };
+  }, [c.id, refreshComplaints]);
+
+  // A complaint step can change the link's status, so reload the case too.
+  const complaintChanged = () => {
+    refreshComplaints();
+    onSwitch(c.id);
+  };
   const [error, setError] = useState("");
 
   const removed = c.links.filter((l) => l.status === "removed").length;
@@ -216,6 +245,9 @@ function Dashboard({
     <div className="container">
       <div className="dash-head">
         <div>
+          <p className="small">
+            <Link href="/dashboard">Dashboard</Link>
+          </p>
           <p className="label">{CATEGORY_LABEL[c.category]}</p>
           <h1>Your case</h1>
           <div className="tally">
@@ -288,6 +320,8 @@ function Dashboard({
                 onChange={replaceLink}
                 onError={setError}
                 defaultOpen={i === 0}
+                complaints={complaints.filter((x) => x.link_id === l.id)}
+                onComplaintChanged={complaintChanged}
               />
             ))}
           </ul>
@@ -363,6 +397,8 @@ function Dashboard({
         )}
       </section>
 
+      <EvidenceLocker c={c} complaints={complaints} onChanged={refreshComplaints} />
+      <CaseTimeline caseId={c.id} version={version} />
       <DeleteAccount onDeleted={onLock} />
     </div>
   );
@@ -432,12 +468,16 @@ function LinkRow({
   onChange,
   onError,
   defaultOpen,
+  complaints,
+  onComplaintChanged,
 }: {
   link: CaseLink;
   c: NivraCase;
   onChange: (l: CaseLink) => void;
   onError: (msg: string) => void;
   defaultOpen: boolean;
+  complaints: Complaint[];
+  onComplaintChanged: () => void;
 }) {
   const platform = resolvePlatform(link.url);
   const host = link.host;
@@ -525,8 +565,27 @@ function LinkRow({
                   Open in email
                 </a>
               )}
+              <button
+                className="btn btn--small"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api.createComplaint(link.id, notice.subject, notice.body);
+                    announceComplaintsChanged();
+                  } catch (err) {
+                    onError(errorText(err));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                title="Start tracking this notice as a complaint"
+              >
+                Use this notice
+              </button>
             </div>
             <NoticeAssistant caseId={c.id} linkId={link.id} platformName={platform?.name} />
+            <ComplaintTracker complaints={complaints} platform={platform} onChanged={onComplaintChanged} />
           </div>
 
           {/* Right: where to send, status, next step */}

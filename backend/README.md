@@ -107,4 +107,24 @@ To test discovery against a page on your own machine, start the API with `NIVRA_
 
 AI drafting is off by default (`NIVRA_LLM_PROVIDER=none`): agents use templates and rules. To use Claude, set `NIVRA_LLM_PROVIDER=anthropic` and `NIVRA_ANTHROPIC_API_KEY`. The model only ever receives the case type, platform and legal grounds, never links, names or images.
 
+## API (phase 6: complaints, evidence, overview)
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/api/cases/{id}/complaints` | Complaints in a case (with filled-in text and history) |
+| POST | `/api/links/{id}/complaints` | Use a notice for a link (starts at "Approved by you") |
+| POST | `/api/complaints/{id}/status` | Record the next step (submitted, confirmed, replied, resolved, rejected) |
+| DELETE | `/api/complaints/{id}` | Discard a draft that hasn't been sent |
+| GET | `/api/cases/{id}/timeline` | Everything that happened in a case, newest first |
+| GET | `/api/overview` | Dashboard counts and cases |
+| GET | `/api/platforms`, `/api/platforms/{id}` | The shared platform directory |
+| GET / POST | `/api/evidence/locker` | Locker salt and key check (set up once) |
+| GET / POST | `/api/cases/{id}/evidence` | List or add encrypted evidence |
+| GET | `/api/evidence/{id}/blob` | Download an encrypted file |
+| DELETE | `/api/evidence/{id}` | Delete an item and its file |
+
+Evidence arrives already encrypted by the browser; the server can't read it. Files are stored in `NIVRA_EVIDENCE_DIR` (default `./evidence-store`, not web-served).
+
+The platform directory lives in `../shared/platforms.json`. The website copies it automatically before `npm run dev` / `npm run build`; a backend test fails if the copies differ.
+
 Every case and link query is scoped to the logged-in account, so another account's IDs return 404.
