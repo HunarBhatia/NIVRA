@@ -70,7 +70,7 @@ export default function Home() {
             </div>
             <div className="slip__row">
               <span>To return</span>
-              <span>Case ID and a passphrase</span>
+              <span>Nivra ID and a passphrase</span>
             </div>
           </div>
         </aside>

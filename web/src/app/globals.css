@@ -1,4 +1,4 @@
-/* hallmark: theme garden (deal: manual) | genre editorial | shape guided service + app screens | signature the Case ID slip | fast mode (prototype) */
+/* hallmark: theme garden (deal: manual) | genre editorial | shape guided service + app screens | signature the Nivra ID slip | fast mode (prototype) */
 /* critique: calm warm paper, green ink, no imagery of people on purpose; words carry the page because victims must never be shown images. */
 /* waive: sloplint not run - running the downloaded lint script was blocked in this environment; Floor applied by hand. */
 
@@ -378,7 +378,7 @@ table {
   max-width: 34ch;
 }
 
-/* The Case ID slip - the page's signature object */
+/* The Nivra ID slip - the page's signature object */
 .slip {
   background: var(--color-paper-2);
   border-radius: var(--radius-card);

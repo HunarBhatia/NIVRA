@@ -587,9 +587,31 @@ D11 [DECIDED 2026-11-14] Visual design: "Garden" direction (warm oat paper,
     Why: calm and human for people in distress; words, not pictures, carry
     the page. Open to change - the user reviews and asks for changes.
 
-D12 [DECIDED 2026-11-14] Prototype stores cases in browser storage.
+D12 [RETIRED 2026-11-14 by phase 2] Prototype stored cases in browser storage.
     Why: gives a fully clickable prototype today with no backend. To be
     replaced by the server database (D9) in build phase 3.
+
+D13 [DECIDED 2026-11-14] Registered images are fingerprinted ON THE DEVICE.
+    The browser computes SHA-256, pHash and the embedding; only fingerprints
+    reach the server. D3 still holds: Nivra's server never stores a
+    registered original. (Section 13.5-13.9.)
+    Why: removes breach and illegal-material risk; same model as StopNCII.
+
+D14 [DECIDED 2026-11-14] Accounts: anonymous by default (Nivra ID +
+    passphrase), optional email added later for alerts and recovery. One
+    account can hold several cases and protected images.
+    Why: keeps D7's low barrier; monitoring alerts need an opt-in contact.
+
+D15 [DECIDED 2026-11-14] Development database: SQLite now, PostgreSQL +
+    pgvector in production, same code switched by DATABASE_URL. Docker,
+    Redis and a task queue arrive with the discovery phase.
+    Why: this machine has no Docker/Postgres; zero-install start.
+
+D16 [DECIDED 2026-11-14] Maritime and Prune are optional adapters, off by
+    default, behind an agent-runtime interface and an LLMProvider interface.
+    Default: call the model provider directly, run agents in our backend.
+    Why: both add third parties with no stated data region or prompt
+    retention policy; sensitive case text should not travel further.
 
 
 --------------------------------------------------------------------------------
@@ -607,3 +629,239 @@ PWA - Progressive Web App; a website that can be installed like an app.
   Nivra deliberately does NOT do this (see D4).
 Responsive - a page layout that adapts to the screen size (phone/laptop).
 CDN - Content Delivery Network (e.g. Cloudflare) that sits in front of sites.
+
+
+--------------------------------------------------------------------------------
+13. PLATFORM V2 - FROM PROTOTYPE TO REAL PLATFORM (audit, 2026-11-14)
+--------------------------------------------------------------------------------
+
+13.1 What changed
+The team set a bigger vision: users register images they want protected,
+Nivra fingerprints them, discovers copies online through authorised sources,
+lets the user confirm matches, then drafts, tracks and follows up complaints.
+Built with a Python/FastAPI backend and four AI agents (LangGraph).
+
+13.2 Audit - what already works (prototype, frontend only)
+Landing, help and 12 platform guides; 6-step case wizard with under-18
+redirect; link -> platform recognition; template notices (IT Rules 2021 +
+IT Act); anonymous Case ID + passphrase; dashboard with statuses, history
+and escalation ladder; quick exit. All verified by clicking through.
+
+13.3 Audit - partial or fake today
+Cases live in browser storage only (D12). Platform links, helplines and
+legal text are unverified. No server, so no re-checks or reminders. The
+"pretend the deadline passed" button is a test tool. No tests exist yet.
+
+13.4 Audit - missing versus the vision
+Backend and database; accounts/auth; image registration; SHA-256, pHash
+and embedding fingerprints; discovery providers and matching; human review
+of matches; evidence store; agents; background jobs; notifications;
+data deletion; audit trail; deployment.
+
+13.5 The big conflict: uploading images vs D3
+D3 says images never leave the user's device. Registering images for
+monitoring seems to need uploads. Storing intimate images on our server is
+a breach magnet, and if one shows a minor we'd hold illegal material.
+StopNCII solves this by fingerprinting on the device. Decision: see D13.
+
+13.6 Option A - fingerprint on the device (recommended)
+The browser computes SHA-256 and pHash locally; only fingerprints are sent.
+Embeddings can also run in the browser with a small vision model
+(e.g. CLIP via ONNX/transformers.js, a one-off download of ~80-100 MB). The
+server never holds a registered original. Matches what the vision asks for:
+"fingerprint-only monitoring after registration".
+
+13.7 Option B - transient server processing
+The image is uploaded over TLS, fingerprinted in memory and deleted at once;
+only fingerprints are kept. Simpler and allows bigger models, but the image
+does touch our server, so logs, crashes and memory dumps become risks.
+
+13.8 Option C - encrypted storage of originals
+Keep originals encrypted with a retention window so they can be re-processed
+when models improve. Most flexible, most dangerous. Not recommended.
+
+13.9 Fingerprints are not harmless either
+A perceptual hash or embedding can't rebuild the image, but embeddings can
+leak some visual features (inversion attacks exist). They are encrypted at
+rest, tied to the account, and deleted when the user revokes registration.
+
+13.10 Discovery reality check
+No free, unrestricted reverse-image-search API exists. Google Lens has no
+API, Bing's search APIs were retired (2025), TinEye is paid and licensed.
+First provider: user-submitted URLs (always allowed). Next: one licensed
+provider (e.g. TinEye) once there is a budget and their terms allow it.
+
+13.11 Discovery risk - fetching candidate images
+To match a candidate the server must download it. A candidate could be
+illegal material (CSAM). Rules: fetch only via allowed providers, respect
+robots.txt and rate limits, process in memory, never persist candidate
+images, keep only URL + fingerprints + scores. Industry CSAM-hash checks
+(e.g. PhotoDNA) need approval and are a later step.
+
+13.12 Match classification (never automatic accusation)
+exact (same SHA-256) -> high-confidence (pHash Hamming distance <= ~8 of 64
+or embedding cosine >= ~0.92) -> possible (looser thresholds) -> none.
+Thresholds are configuration, not code. Every match needs the user's
+confirmation before anything is drafted or sent.
+
+13.13 Agents - what they will and won't do
+Discovery Coordinator (jobs, providers), Verification Assistant (explains
+scores, never decides consent), Complaint Generation (drafts only, user
+approves), Follow-up (deadlines, reminders, never assumes success). Agents
+see URLs, scores and case text - never image pixels. LLM output is
+validated against schemas before use.
+
+13.14 Maritime (maritime.sh) - findings
+A hosting platform that runs each agent in its own micro-VM, deployed from
+a Dockerfile repo or image; REST API at api.maritime.sh with bearer keys,
+Python SDK "maritime", cron and webhook triggers. LangGraph works only as a
+custom container. Docs state no data residency, prompt-retention policy or
+privacy policy, and logs are kept 12 hours.
+
+13.15 Prune (withprune.com) - findings
+A managed LLM gateway: change the base URL, keep your provider keys in its
+vault, get spend caps, caching and "Shield" PII guardrails. OpenAI-style
+chat completions are documented; native Anthropic Messages support is not
+confirmed. No processing region stated; usage metadata kept for billing;
+it says it is not SOC 2 certified.
+
+13.16 Recommendation for Maritime and Prune
+Both would send sensitive case text to extra third parties with unclear
+retention. Plan: build an LLMProvider interface and an agent runtime
+interface; default to calling the model provider directly and running
+agents inside our own backend; add Prune and Maritime as optional adapters,
+switched off by default. Decision: see D16.
+
+13.17 Proposed stack (keep it lean)
+FastAPI + SQLAlchemy 2 + Alembic; PostgreSQL with the pgvector extension
+instead of a separate Qdrant server (one database, fewer moving parts);
+Redis + a task queue only from the discovery phase on; private encrypted
+object storage only for evidence the user chooses to keep; LangGraph for
+the agents.
+
+13.18 Why pgvector over Qdrant
+At our scale (thousands, not billions, of fingerprints) pgvector is fast
+enough, keeps fingerprints and permissions in one transactional database,
+and removes a service to secure and back up. A vector-store interface lets
+us move to Qdrant later if search volume demands it.
+
+13.19 Proposed folder structure
+  web/                 existing Next.js app (keeps the Garden design)
+  backend/app/         FastAPI app: api/ (routes), models/ (database),
+                       schemas/ (validated I/O), services/ (business logic),
+                       core/ (config, security, db), fingerprint/, discovery/,
+                       agents/, llm/ (provider interface + adapters)
+  backend/alembic/     database migrations
+  backend/tests/       pytest suite
+  extension/           Chrome extension (later)
+
+13.20 Data flow (target)
+Browser fingerprints image -> POST fingerprints -> stored per user ->
+discovery job (provider gives candidate URLs) -> worker fetches candidate in
+memory -> fingerprints compared -> match saved with scores -> user reviews ->
+confirmed match becomes an incident -> complaint draft -> user approves and
+submits -> follow-up tracks deadline and responses.
+
+13.21 Phase plan (from the vision brief)
+P1 audit (this section) - P2 backend foundation: FastAPI, DB, auth, cases API,
+frontend wired to it - P3 registration + fingerprints - P4 discovery +
+matching + jobs - P5 agents - P6 incidents + evidence + complaints -
+P7 monitoring + notifications - P8 production readiness.
+
+
+--------------------------------------------------------------------------------
+14. PHASE 2 - BACKEND FOUNDATION (built and tested 2026-11-14)
+--------------------------------------------------------------------------------
+
+14.1 What was built
+A FastAPI backend in backend/ with a real database, anonymous accounts,
+login sessions, cases, links, status history, an audit trail and full
+account deletion. The website now saves everything through it instead of
+browser storage (D12 is retired).
+
+14.2 How the website reaches the backend
+The browser only talks to localhost:3000. Next.js forwards /api/* to FastAPI
+on port 8000 (a "rewrite" in web/next.config.ts). This keeps the login
+cookie first-party and means no cross-site (CORS) setup is needed.
+
+14.3 Backend layout (backend/app)
+  main.py          app setup, security headers, safe error messages
+  core/config.py   every setting from environment variables (NIVRA_*)
+  core/db.py       database engine, UTC-safe timestamp type
+  core/security.py passphrase hashing, session tokens, Nivra IDs, encryption
+  core/ratelimit.py login/registration rate limiting
+  models.py        database tables
+  schemas.py       validated request/response shapes
+  api/             routes: auth.py, account.py, cases.py, deps.py
+  services/        links.py (URL rules, status machine), audit.py
+
+14.4 Tables
+users (Nivra ID, Argon2 passphrase hash, optional encrypted email),
+sessions (SHA-256 of the token, expiry), cases, case_links (url, host,
+status), status_events (timeline), audit_events (who did what, never
+content). Image, fingerprint, discovery and complaint tables arrive with
+the phases that use them.
+
+14.5 Why Argon2 for passphrases
+Argon2id is memory-hard: guessing passphrases from a leaked database needs
+lots of memory per guess, which makes GPU cracking far slower than with
+plain hashes. Login also spends the same time for unknown IDs, so timing
+doesn't reveal which Nivra IDs exist.
+
+14.6 Why sessions are random tokens in httpOnly cookies
+A 256-bit random token is set as an httpOnly, SameSite=Lax cookie, so
+page scripts can't read it (blocks theft by XSS). The database stores only
+its SHA-256, so a database leak doesn't hand out working logins. Logout and
+Quick exit delete the session on the server.
+
+14.7 Why the server checks status changes
+The buttons only show valid next steps, but the server enforces the rules
+too (e.g. a link can't jump from "found" to "removed"). That way a broken or
+tampered client can't corrupt a case's history.
+
+14.8 Every query is scoped to the account
+Cases and links are always looked up together with the logged-in user's ID,
+so guessing another account's case ID returns "not found". Tested
+explicitly in tests/test_cases.py.
+
+14.9 Privacy-safe errors and logs
+Validation errors name the wrong field but never echo what was typed
+(passphrases, links). Unexpected errors log only the error type and route.
+The audit trail records actions and IDs, never URLs, emails or notice text.
+
+14.10 User-controlled deletion
+"Delete my account and all data" (needs the passphrase again) removes the
+account, sessions, cases, links and history. Audit rows stay only as
+anonymous counts with no link to the person.
+
+14.11 Optional email, encrypted
+PATCH /api/account can store an email for future alerts, encrypted with a
+key from NIVRA_DATA_KEY (Fernet). Without that key the feature switches off
+instead of storing plaintext. There is no email screen on the website yet.
+
+14.12 The timezone bug we caught
+SQLite drops time zones, so timestamps came back without "Z" and browsers
+would read them as local time - 5.5 hours off in India. A custom UTCDateTime
+column type now always returns UTC. A test caught it before release.
+
+14.13 Settings that must change for production
+NIVRA_ENVIRONMENT=production refuses to start unless cookies are Secure,
+prototype tools are off and the database is PostgreSQL. Interactive API
+docs (/api/docs) exist only in development.
+
+14.14 Tests (backend/tests, 31 passing)
+Registration, login, logout, wrong passphrase vs unknown ID, rate limiting,
+hashing (nothing stored in plaintext), encrypted email, account deletion,
+security headers, case CRUD, cross-account isolation, link validation,
+the status state machine, the prototype deadline tool, and a check that
+the Alembic migrations build exactly the tables the models describe.
+
+14.15 How to run everything
+Terminal 1: cd backend, then .venv/Scripts/python -m uvicorn app.main:app
+--reload --port 8000. Terminal 2: cd web, then npm run dev. Open
+localhost:3000. Full setup steps are in backend/README.md.
+
+14.16 Still not done after phase 2
+No image registration or fingerprints yet (phase 3). No discovery, agents,
+notifications or email screen. Rate limiting is per process (moves to Redis
+later). Platform data and legal wording still unverified. Not deployed.

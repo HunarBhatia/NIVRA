@@ -6,10 +6,22 @@ Read [PROJECT_DETAILS.txt](PROJECT_DETAILS.txt) for the full guide: every decisi
 
 ## Repository layout
 
-- `web/` is the Next.js app (frontend and API).
-- `extension/` will hold the Chrome extension (phase 2).
+- `web/` is the Next.js website (Garden design).
+- `backend/` is the FastAPI API: accounts, cases, links, history ([backend/README.md](backend/README.md)).
+- `extension/` will hold the Chrome extension (later phase).
 
 ## Run locally
+
+First-time backend setup is in [backend/README.md](backend/README.md). Then use two terminals.
+
+Terminal 1, the API:
+
+```bash
+cd backend
+./.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
+```
+
+Terminal 2, the website:
 
 ```bash
 cd web
@@ -17,4 +29,4 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:3000.
+Open http://localhost:3000. The website forwards `/api/*` to the backend.

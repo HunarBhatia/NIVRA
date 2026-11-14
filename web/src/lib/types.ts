@@ -1,10 +1,10 @@
-// Shared types for the Nivra prototype.
-// See PROJECT_DETAILS.txt section 10 (MVP blueprint) for the reasoning.
+// Shared types for the Nivra website.
+// Case/link shapes mirror the backend API (backend/app/schemas.py).
 
 /** What kind of harm the case is about (decision D1). */
 export type Category = "intimate" | "morphed" | "impersonation";
 
-/** Lifecycle of a single link (blueprint 10.5). */
+/** Lifecycle of a single link (blueprint 10.5). The server enforces the rules. */
 export type LinkStatus =
   | "found" // added, nothing sent yet
   | "reported" // user sent the notice, waiting for a reply
@@ -14,31 +14,42 @@ export type LinkStatus =
   | "reappeared"; // was removed, came back
 
 export interface StatusEvent {
-  at: string; // ISO timestamp
+  at: string; // ISO timestamp (UTC)
   status: LinkStatus;
-  note?: string;
+  note: string | null;
 }
 
 export interface CaseLink {
   id: string;
   url: string;
-  platformId: string | null; // null = not in our directory yet
+  host: string;
   status: LinkStatus;
-  reportedAt?: string;
+  reported_at: string | null;
   /** Prototype-only: lets testers pretend time has passed. */
-  deadlineOverride?: boolean;
+  deadline_override: boolean;
   events: StatusEvent[];
 }
 
 export interface NivraCase {
-  id: string; // e.g. NV-7K3Q-92XD
-  createdAt: string;
+  id: string;
   category: Category;
-  selfTaken: boolean | null; // did the user take the photo themselves?
-  displayName: string; // optional name to sign notices with
-  passHash: string; // PBKDF2 hash of the passphrase
-  salt: string;
+  self_taken: boolean | null;
+  display_name: string;
+  created_at: string;
   links: CaseLink[];
+}
+
+export interface CaseSummary {
+  id: string;
+  category: Category;
+  created_at: string;
+  link_count: number;
+}
+
+export interface Account {
+  account_code: string; // the Nivra ID, e.g. NV-7K3Q-92XD
+  has_email: boolean;
+  created_at: string;
 }
 
 export interface ReportChannel {

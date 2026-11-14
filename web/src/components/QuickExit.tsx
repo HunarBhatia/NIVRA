@@ -2,13 +2,18 @@
 
 import { useEffect } from "react";
 
-// Quick exit (feature 7.1). Replaces this tab with a harmless page so the
-// back button doesn't return to Nivra, and locks any open case.
+// Quick exit (feature 7.1). Logs the account out on the server, then replaces
+// this tab with a harmless page so the back button doesn't return to Nivra.
 // Shortcut: press Esc twice quickly.
 
 const SAFE_URL = "https://www.google.com/search?q=weather+today";
 
 export function quickExit() {
+  try {
+    // sendBeacon survives the page unloading, so the session is ended
+    // server-side even though we leave immediately.
+    navigator.sendBeacon?.("/api/auth/logout");
+  } catch {}
   try {
     sessionStorage.clear();
   } catch {}

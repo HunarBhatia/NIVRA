@@ -3,6 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GOOGLE_DEINDEX_URL, PLATFORMS, getPlatform } from "@/lib/platforms";
 
+// Every known platform page is pre-built by generateStaticParams, so reading
+// `params` without a Suspense boundary is fine; allow it to block (Next 16
+// otherwise flags it in the dev overlay). Unknown platforms return 404.
+export const instant = false;
+
 export function generateStaticParams() {
   return PLATFORMS.map((p) => ({ platform: p.id }));
 }

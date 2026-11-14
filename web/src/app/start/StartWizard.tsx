@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { createCase } from "@/lib/caseStore";
+import { ApiError, createCase, getMe, register } from "@/lib/api";
 import { CATEGORY_LABEL } from "@/lib/notices";
 import { TAKE_IT_DOWN_URL, normaliseUrl, resolvePlatform, splitLinks } from "@/lib/platforms";
-import type { Category } from "@/lib/types";
+import type { Account, Category } from "@/lib/types";
 
 // The "Start a case" wizard (blueprint 10.2). One decision per screen.
 
@@ -43,8 +43,17 @@ export default function StartWizard() {
   const [pass2, setPass2] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [caseId, setCaseId] = useState("");
+  const [nivraId, setNivraId] = useState("");
   const [copied, setCopied] = useState(false);
+  // Already logged in? Then the new case is added to that account and the
+  // passphrase step is skipped.
+  const [account, setAccount] = useState<Account | null>(null);
+
+  useEffect(() => {
+    getMe()
+      .then(setAccount)
+      .catch(() => setAccount(null));
+  }, []);
 
   const parsed = useMemo(() => parseLinks(linkText), [linkText]);
   const validUrls = parsed.filter((p) => p.url).map((p) => p.url as string);
@@ -78,21 +87,28 @@ export default function StartWizard() {
   }
 
   async function save() {
-    if (pass1.length < 8) return setError("Use at least 8 characters for your passphrase.");
-    if (pass1 !== pass2) return setError("The two passphrases don't match.");
+    if (!account) {
+      if (pass1.length < 8) return setError("Use at least 8 characters for your passphrase.");
+      if (pass1 !== pass2) return setError("The two passphrases don't match.");
+    }
     setBusy(true);
     try {
-      const c = await createCase({
+      let code = account?.account_code ?? "";
+      if (!account) {
+        code = (await register(pass1)).account_code;
+        setPass1("");
+        setPass2("");
+      }
+      await createCase({
         category: category as Category,
-        selfTaken: selfTaken === "yes" ? true : selfTaken === "no" ? false : null,
-        displayName,
-        passphrase: pass1,
+        self_taken: selfTaken === "yes" ? true : selfTaken === "no" ? false : null,
+        display_name: displayName,
         urls: validUrls,
       });
-      setCaseId(c.id);
+      setNivraId(code);
       go("done");
-    } catch {
-      setError("Something went wrong saving your case. Please try again.");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Something went wrong saving your case.");
     } finally {
       setBusy(false);
     }
@@ -100,7 +116,7 @@ export default function StartWizard() {
 
   async function copyId() {
     try {
-      await navigator.clipboard.writeText(caseId);
+      await navigator.clipboard.writeText(nivraId);
       setCopied(true);
     } catch {}
   }
@@ -376,10 +392,18 @@ export default function StartWizard() {
 
       {step === "save" && (
         <section>
-          <h1>Lock your case</h1>
+          <h1>{account ? "Save this case" : "Lock your case"}</h1>
           <p className="wizard__intro">
-            No account or email. You&apos;ll get a Case ID, and this passphrase opens it. We
-            can&apos;t recover a lost passphrase.
+            {account ? (
+              <>
+                It will be added to your account <span className="num">{account.account_code}</span>.
+              </>
+            ) : (
+              <>
+                No email needed. You&apos;ll get a Nivra ID, and this passphrase opens it. We
+                can&apos;t recover a lost passphrase.
+              </>
+            )}
           </p>
           <div className="field">
             <label htmlFor="name">Name to sign your notices (optional)</label>
@@ -394,36 +418,42 @@ export default function StartWizard() {
               Platforms act faster on signed notices. Leave blank to fill it in later.
             </span>
           </div>
-          <div className="field">
-            <label htmlFor="p1">Passphrase</label>
-            <input
-              id="p1"
-              type="password"
-              className="input"
-              value={pass1}
-              onChange={(e) => setPass1(e.target.value)}
-              autoComplete="new-password"
-            />
-            <span className="hint">At least 8 characters. A short sentence is easy to remember.</span>
-          </div>
-          <div className="field">
-            <label htmlFor="p2">Type it again</label>
-            <input
-              id="p2"
-              type="password"
-              className="input"
-              value={pass2}
-              onChange={(e) => setPass2(e.target.value)}
-              autoComplete="new-password"
-            />
-          </div>
+          {!account && (
+            <>
+              <div className="field">
+                <label htmlFor="p1">Passphrase</label>
+                <input
+                  id="p1"
+                  type="password"
+                  className="input"
+                  value={pass1}
+                  onChange={(e) => setPass1(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <span className="hint">
+                  At least 8 characters. A short sentence is easy to remember.
+                </span>
+              </div>
+              <div className="field">
+                <label htmlFor="p2">Type it again</label>
+                <input
+                  id="p2"
+                  type="password"
+                  className="input"
+                  value={pass2}
+                  onChange={(e) => setPass2(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            </>
+          )}
           {error && <p className="error">{error}</p>}
           <div className="wizard__nav">
             <button className="btn btn--ghost" onClick={() => go("evidence")}>
               Back
             </button>
             <button className="btn btn--primary" onClick={save} disabled={busy}>
-              {busy ? "Saving" : "Create my case"}
+              {busy ? "Saving" : account ? "Save case" : "Create my case"}
             </button>
           </div>
         </section>
@@ -433,10 +463,14 @@ export default function StartWizard() {
         <section className="stack-lg">
           <h1>Your case is ready</h1>
           <div className="slip">
-            <p className="label">Your Case ID. Write it down somewhere safe.</p>
-            <p className="slip__id num">{caseId}</p>
+            <p className="label">
+              {account
+                ? "Saved to your account."
+                : "Your Nivra ID. Write it down somewhere safe."}
+            </p>
+            <p className="slip__id num">{nivraId}</p>
             <button className="btn btn--small" onClick={copyId}>
-              {copied ? "Copied" : "Copy Case ID"}
+              {copied ? "Copied" : "Copy Nivra ID"}
             </button>
           </div>
           <p>

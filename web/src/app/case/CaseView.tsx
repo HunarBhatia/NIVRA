@@ -1,89 +1,129 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import {
-  closeCase,
-  deleteCase,
-  getCase,
-  getOpenCaseId,
-  isOverdue,
-  makeLink,
-  saveCase,
-  unlockCase,
-  withStatus,
-} from "@/lib/caseStore";
+import { useCallback, useEffect, useState } from "react";
+import * as api from "@/lib/api";
+import { ApiError, isOverdue } from "@/lib/api";
 import { CATEGORY_LABEL, generateNotice } from "@/lib/notices";
 import {
   CLOUDFLARE_ABUSE_URL,
   CYBERCRIME_URL,
   GOOGLE_DEINDEX_URL,
   STOPNCII_URL,
-  getPlatform,
-  hostnameOf,
+  resolvePlatform,
   splitLinks,
 } from "@/lib/platforms";
-import type { CaseLink, LinkStatus, NivraCase, Platform } from "@/lib/types";
+import type { Account, CaseLink, CaseSummary, LinkStatus, NivraCase, Platform } from "@/lib/types";
 
-// The case dashboard (blueprint 10.9, /case). Shows the unlock form when no
-// case is open in this tab, otherwise every link with its status and next step.
+// The account dashboard (/case). Logged out: the unlock form. Logged in: the
+// account's cases, each link with its notice, status and next step. All data
+// comes from the backend API (backend/app/api/cases.py).
 
-type View = "loading" | "locked" | "open";
+type View = "loading" | "locked" | "empty" | "open" | "offline";
+
+const errorText = (e: unknown) =>
+  e instanceof ApiError ? e.message : "Something went wrong. Please try again.";
 
 export default function CaseView() {
   const [view, setView] = useState<View>("loading");
-  const [c, setC] = useState<NivraCase | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [current, setCurrent] = useState<NivraCase | null>(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    const id = getOpenCaseId();
-    const found = id ? getCase(id) : null;
-    // Reading browser storage has to happen after mount, so this effect
-    // sets state once on load.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setC(found);
-    setView(found ? "open" : "locked");
+  const load = useCallback(async (preferId?: string) => {
+    try {
+      const me = await api.getMe();
+      setAccount(me);
+      if (!me) return setView("locked");
+      const list = await api.listCases();
+      setCases(list);
+      if (list.length === 0) {
+        setCurrent(null);
+        return setView("empty");
+      }
+      const pick = list.find((c) => c.id === preferId) ?? list[list.length - 1];
+      setCurrent(await api.getCase(pick.id));
+      setView("open");
+    } catch (e) {
+      setError(errorText(e));
+      setView("offline");
+    }
   }, []);
 
-  function update(next: NivraCase) {
-    saveCase(next);
-    setC(next);
+  useEffect(() => {
+    // Loading data from the server once on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  async function lock() {
+    await api.logout().catch(() => {});
+    setAccount(null);
+    setCurrent(null);
+    setView("locked");
   }
 
   if (view === "loading") {
     return (
       <div className="container narrow section">
-        <p className="muted">Opening your case</p>
+        <p className="muted">Opening your account</p>
       </div>
     );
   }
 
-  if (view === "locked" || !c) {
+  if (view === "offline") {
     return (
-      <Unlock
-        onOpen={(opened) => {
-          setC(opened);
-          setView("open");
-        }}
-      />
+      <div className="container narrow section stack">
+        <h1>We can&apos;t open your account right now</h1>
+        <p>{error}</p>
+        <div className="actions">
+          <button className="btn btn--primary" onClick={() => load()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "locked" || !account) {
+    return <Unlock onOpen={() => load()} />;
+  }
+
+  if (view === "empty" || !current) {
+    return (
+      <div className="container narrow section stack">
+        <p className="label num">Nivra ID {account.account_code}</p>
+        <h1>No cases yet</h1>
+        <p>Start a case to get notices written for each link.</p>
+        <div className="actions">
+          <Link href="/start" className="btn btn--primary">
+            Start a case
+          </Link>
+          <button className="btn" onClick={lock}>
+            Lock account
+          </button>
+        </div>
+      </div>
     );
   }
 
   return (
     <Dashboard
-      c={c}
-      onChange={update}
-      onLock={() => {
-        closeCase();
-        setC(null);
-        setView("locked");
-      }}
+      account={account}
+      cases={cases}
+      c={current}
+      setCase={setCurrent}
+      onSwitch={(id) => load(id)}
+      onDeleted={() => load()}
+      onLock={lock}
     />
   );
 }
 
 /* ---------------- Unlock ---------------- */
 
-function Unlock({ onOpen }: { onOpen: (c: NivraCase) => void }) {
+function Unlock({ onOpen }: { onOpen: () => void }) {
   const [id, setId] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
@@ -93,28 +133,33 @@ function Unlock({ onOpen }: { onOpen: (c: NivraCase) => void }) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const c = await unlockCase(id, pass);
-    setBusy(false);
-    if (!c) return setError("That Case ID and passphrase don't match a case in this browser.");
-    onOpen(c);
+    try {
+      await api.login(id, pass);
+      setPass("");
+      onOpen();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="container narrow section">
-      <h1>Open your case</h1>
+      <h1>Open your account</h1>
       <p style={{ margin: "var(--space-sm) 0 var(--space-xl)" }}>
-        Enter the Case ID you were given and your passphrase.
+        Enter the Nivra ID you were given and your passphrase.
       </p>
       <form onSubmit={submit}>
         <div className="field">
-          <label htmlFor="cid">Case ID</label>
+          <label htmlFor="cid">Nivra ID</label>
           <input
             id="cid"
             className="input num"
             placeholder="NV-XXXX-XXXX"
             value={id}
             onChange={(e) => setId(e.target.value)}
-            autoComplete="off"
+            autoComplete="username"
             autoCapitalize="characters"
           />
         </div>
@@ -132,7 +177,7 @@ function Unlock({ onOpen }: { onOpen: (c: NivraCase) => void }) {
         {error && <p className="error">{error}</p>}
         <div className="actions" style={{ marginTop: "var(--space-lg)" }}>
           <button className="btn btn--primary" disabled={busy || !id || !pass}>
-            {busy ? "Checking" : "Open case"}
+            {busy ? "Checking" : "Open account"}
           </button>
           <Link href="/start" className="btn btn--ghost">
             Start a new case instead
@@ -154,7 +199,7 @@ const STATUS_LABEL: Record<LinkStatus, string> = {
   reappeared: "Back online",
 };
 
-function badgeFor(link: CaseLink, platform?: Platform) {
+function badgeFor(link: CaseLink, platform: Platform | null) {
   if (isOverdue(link, platform?.expectedHours ?? 24)) {
     return { label: "Deadline passed", tone: "warn" };
   }
@@ -168,35 +213,68 @@ function badgeFor(link: CaseLink, platform?: Platform) {
 }
 
 function Dashboard({
+  account,
+  cases,
   c,
-  onChange,
+  setCase,
+  onSwitch,
+  onDeleted,
   onLock,
 }: {
+  account: Account;
+  cases: CaseSummary[];
   c: NivraCase;
-  onChange: (c: NivraCase) => void;
+  setCase: (c: NivraCase) => void;
+  onSwitch: (id: string) => void;
+  onDeleted: () => void;
   onLock: () => void;
 }) {
   const [newLinks, setNewLinks] = useState("");
   const [addError, setAddError] = useState("");
+  const [name, setName] = useState(c.display_name);
+  const [nameSaved, setNameSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState("");
 
   const removed = c.links.filter((l) => l.status === "removed").length;
   const waiting = c.links.filter((l) => l.status === "reported").length;
   const todo = c.links.length - removed - waiting;
 
-  function setLink(next: CaseLink) {
-    onChange({ ...c, links: c.links.map((l) => (l.id === next.id ? next : l)) });
+  function replaceLink(next: CaseLink) {
+    setCase({ ...c, links: c.links.map((l) => (l.id === next.id ? next : l)) });
   }
 
-  function addLinks(e: React.FormEvent) {
+  async function addLinks(e: React.FormEvent) {
     e.preventDefault();
-    const made = splitLinks(newLinks)
-      .map(makeLink)
-      .filter((l): l is CaseLink => l !== null);
-    if (made.length === 0) return setAddError("Paste at least one valid link.");
-    setAddError("");
-    setNewLinks("");
-    onChange({ ...c, links: [...c.links, ...made] });
+    const urls = splitLinks(newLinks);
+    if (urls.length === 0) return setAddError("Paste at least one valid link.");
+    try {
+      setCase(await api.addLinks(c.id, urls));
+      setAddError("");
+      setNewLinks("");
+    } catch (err) {
+      setAddError(errorText(err));
+    }
+  }
+
+  async function saveName() {
+    if (name === c.display_name) return;
+    try {
+      setCase(await api.updateCase(c.id, name));
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 1800);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function removeCase() {
+    try {
+      await api.deleteCase(c.id);
+      onDeleted();
+    } catch (err) {
+      setError(errorText(err));
+    }
   }
 
   return (
@@ -219,17 +297,43 @@ function Dashboard({
               <span className="small muted">removed</span>
             </div>
           </div>
+          {cases.length > 1 && (
+            <div className="field" style={{ marginTop: "var(--space-lg)", maxWidth: "24rem" }}>
+              <label htmlFor="switch">Your cases</label>
+              <select
+                id="switch"
+                className="input"
+                value={c.id}
+                onChange={(e) => onSwitch(e.target.value)}
+              >
+                {cases.map((s, i) => (
+                  <option key={s.id} value={s.id}>
+                    Case {i + 1}: {CATEGORY_LABEL[s.category]} ({s.link_count} links)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <div className="slip">
-          <p className="label">Case ID</p>
-          <p className="slip__id num">{c.id}</p>
+          <p className="label">Nivra ID</p>
+          <p className="slip__id num">{account.account_code}</p>
           <div className="actions">
             <button className="btn btn--small" onClick={onLock}>
-              Lock case
+              Lock account
             </button>
+            <Link href="/start" className="btn btn--small btn--ghost">
+              New case
+            </Link>
           </div>
         </div>
       </div>
+
+      {error && (
+        <p className="well well--clay error" role="alert" style={{ marginBottom: "var(--space-lg)" }}>
+          {error}
+        </p>
+      )}
 
       <section aria-labelledby="links-h" style={{ marginBottom: "var(--space-2xl)" }}>
         <h2 id="links-h" style={{ marginBottom: "var(--space-md)" }}>
@@ -240,7 +344,14 @@ function Dashboard({
         ) : (
           <ul className="links">
             {c.links.map((l, i) => (
-              <LinkRow key={l.id} link={l} c={c} onChange={setLink} defaultOpen={i === 0} />
+              <LinkRow
+                key={l.id}
+                link={l}
+                c={c}
+                onChange={replaceLink}
+                onError={setError}
+                defaultOpen={i === 0}
+              />
             ))}
           </ul>
         )}
@@ -283,11 +394,15 @@ function Dashboard({
           <input
             id="dn"
             className="input"
-            value={c.displayName}
+            value={name}
             placeholder="Your name"
-            onChange={(e) => onChange({ ...c, displayName: e.target.value })}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={saveName}
             autoComplete="off"
           />
+          <span className="hint" aria-live="polite">
+            {nameSaved ? "Saved" : "Saved when you click away."}
+          </span>
         </div>
         {!confirmDelete ? (
           <button className="btn btn--danger btn--small" onClick={() => setConfirmDelete(true)}>
@@ -296,17 +411,11 @@ function Dashboard({
         ) : (
           <div className="well well--clay stack">
             <p>
-              This permanently deletes the case and its history from this browser. It can&apos;t
-              be undone.
+              This permanently deletes the case, its links and their history. It can&apos;t be
+              undone.
             </p>
             <div className="actions">
-              <button
-                className="btn btn--danger btn--small"
-                onClick={() => {
-                  deleteCase(c.id);
-                  onLock();
-                }}
-              >
+              <button className="btn btn--danger btn--small" onClick={removeCase}>
                 Yes, delete it
               </button>
               <button className="btn btn--small" onClick={() => setConfirmDelete(false)}>
@@ -316,7 +425,65 @@ function Dashboard({
           </div>
         )}
       </section>
+
+      <DeleteAccount onDeleted={onLock} />
     </div>
+  );
+}
+
+/* ---------------- Delete account ---------------- */
+
+function DeleteAccount({ onDeleted }: { onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [pass, setPass] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.deleteAccount(pass);
+      onDeleted();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  return (
+    <section className="section stack" style={{ paddingTop: 0 }}>
+      <h2>Your data</h2>
+      <p className="small">
+        You can delete your account at any time. This removes every case, link and history entry
+        from Nivra&apos;s servers.
+      </p>
+      {!open ? (
+        <div>
+          <button className="btn btn--danger btn--small" onClick={() => setOpen(true)}>
+            Delete my account and all data
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="well well--clay stack" style={{ maxWidth: "32rem" }}>
+          <p>This can&apos;t be undone. Enter your passphrase to confirm.</p>
+          <input
+            type="password"
+            className="input"
+            aria-label="Passphrase"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            autoComplete="current-password"
+          />
+          {error && <p className="error">{error}</p>}
+          <div className="actions">
+            <button className="btn btn--danger btn--small" disabled={!pass}>
+              Delete everything
+            </button>
+            <button type="button" className="btn btn--small" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -326,25 +493,28 @@ function LinkRow({
   link,
   c,
   onChange,
+  onError,
   defaultOpen,
 }: {
   link: CaseLink;
   c: NivraCase;
   onChange: (l: CaseLink) => void;
+  onError: (msg: string) => void;
   defaultOpen: boolean;
 }) {
-  const platform = getPlatform(link.platformId);
-  const host = hostnameOf(link.url) ?? link.url;
+  const platform = resolvePlatform(link.url);
+  const host = link.host;
   const badge = badgeFor(link, platform);
   const overdue = isOverdue(link, platform?.expectedHours ?? 24);
   const notice = generateNotice({
     url: link.url,
-    platform: platform ?? null,
+    platform,
     category: c.category,
-    selfTaken: c.selfTaken,
-    displayName: c.displayName,
+    selfTaken: c.self_taken,
+    displayName: c.display_name,
   });
   const [copied, setCopied] = useState<"" | "body" | "subject">("");
+  const [busy, setBusy] = useState(false);
 
   async function copy(text: string, which: "body" | "subject") {
     try {
@@ -354,8 +524,23 @@ function LinkRow({
     } catch {}
   }
 
+  async function run(action: () => Promise<CaseLink>) {
+    setBusy(true);
+    try {
+      onChange(await action());
+    } catch (err) {
+      onError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const emailChannel = platform?.channels.find((ch) => ch.kind === "email");
   const needsEscalation = overdue || link.status === "rejected";
+  let path = "";
+  try {
+    path = new URL(link.url).pathname.replace(/\/$/, "");
+  } catch {}
 
   return (
     <li className="link-item">
@@ -364,7 +549,7 @@ function LinkRow({
           <span style={{ minWidth: 0 }}>
             <span className="link-item__url" style={{ display: "block" }}>
               {host}
-              <span className="muted">{new URL(link.url).pathname.replace(/\/$/, "")}</span>
+              <span className="muted">{path}</span>
             </span>
             <span className="small muted">{platform?.name ?? "Website not in our directory"}</span>
           </span>
@@ -379,7 +564,7 @@ function LinkRow({
             <h3>Your notice</h3>
             <p className="small muted">
               Grounds: India&apos;s IT Rules 2021 and IT Act
-              {c.selfTaken ? ", plus your copyright" : ""}. A template, not legal advice.
+              {c.self_taken ? ", plus your copyright" : ""}. A template, not legal advice.
             </p>
             <div className="field" style={{ marginBottom: 0 }}>
               <span className="label">Subject</span>
@@ -475,9 +660,15 @@ function LinkRow({
               </p>
             </div>
 
-            <StatusActions link={link} onChange={onChange} />
+            <StatusActions
+              link={link}
+              busy={busy}
+              onSet={(s, note) => run(() => api.changeStatus(link.id, s, note))}
+            />
 
-            {needsEscalation && <Escalation platform={platform} rejected={link.status === "rejected"} />}
+            {needsEscalation && (
+              <Escalation platform={platform} rejected={link.status === "rejected"} />
+            )}
 
             {link.status === "reported" && !overdue && (
               <p className="small muted">
@@ -486,7 +677,8 @@ function LinkRow({
                 If it doesn&apos;t, come back and we&apos;ll show you the next step.{" "}
                 <button
                   className="btn btn--ghost btn--small"
-                  onClick={() => onChange({ ...link, deadlineOverride: true })}
+                  disabled={busy}
+                  onClick={() => run(() => api.simulateDeadline(link.id))}
                   title="Prototype only: simulate the deadline passing"
                 >
                   Prototype: pretend the deadline passed
@@ -519,35 +711,61 @@ function LinkRow({
   );
 }
 
-function StatusActions({ link, onChange }: { link: CaseLink; onChange: (l: CaseLink) => void }) {
-  const set = (s: LinkStatus, note: string) => onChange(withStatus(link, s, note));
-
+function StatusActions({
+  link,
+  busy,
+  onSet,
+}: {
+  link: CaseLink;
+  busy: boolean;
+  onSet: (s: LinkStatus, note: string) => void;
+}) {
   return (
     <div className="stack">
       <h3>Update the status</h3>
       <div className="actions">
         {(link.status === "found" || link.status === "reappeared") && (
-          <button className="btn btn--primary btn--small" onClick={() => set("reported", "Notice sent")}>
+          <button
+            className="btn btn--primary btn--small"
+            disabled={busy}
+            onClick={() => onSet("reported", "Notice sent")}
+          >
             I&apos;ve sent the notice
           </button>
         )}
         {(link.status === "reported" || link.status === "escalated") && (
           <>
-            <button className="btn btn--primary btn--small" onClick={() => set("removed", "Content removed")}>
+            <button
+              className="btn btn--primary btn--small"
+              disabled={busy}
+              onClick={() => onSet("removed", "Content removed")}
+            >
               It&apos;s been removed
             </button>
-            <button className="btn btn--small" onClick={() => set("rejected", "Platform refused")}>
+            <button
+              className="btn btn--small"
+              disabled={busy}
+              onClick={() => onSet("rejected", "Platform refused")}
+            >
               They refused
             </button>
           </>
         )}
         {link.status === "rejected" && (
-          <button className="btn btn--small" onClick={() => set("escalated", "Escalated")}>
+          <button
+            className="btn btn--small"
+            disabled={busy}
+            onClick={() => onSet("escalated", "Escalated")}
+          >
             I&apos;ve escalated it
           </button>
         )}
         {link.status === "removed" && (
-          <button className="btn btn--small" onClick={() => set("reappeared", "Content came back")}>
+          <button
+            className="btn btn--small"
+            disabled={busy}
+            onClick={() => onSet("reappeared", "Content came back")}
+          >
             It&apos;s back online
           </button>
         )}
@@ -556,10 +774,12 @@ function StatusActions({ link, onChange }: { link: CaseLink; onChange: (l: CaseL
   );
 }
 
-function Escalation({ platform, rejected }: { platform?: Platform; rejected: boolean }) {
+function Escalation({ platform, rejected }: { platform: Platform | null; rejected: boolean }) {
   return (
     <div className="well well--clay stack">
-      <h3>{rejected ? "They refused. Here's what to do next" : "No reply in time. Here's the next step"}</h3>
+      <h3>
+        {rejected ? "They refused. Here's what to do next" : "No reply in time. Here's the next step"}
+      </h3>
       <ol className="ladder small">
         <li>
           <span>

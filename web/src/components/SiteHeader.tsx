@@ -12,7 +12,7 @@ export default function SiteHeader() {
   return (
     <header className="site-header">
       <p className="proto-note">
-        Prototype. Cases are saved only in this browser. Press Esc twice to leave quickly.
+        Prototype: please use test details only. Press Esc twice to leave quickly.
       </p>
       <div className="container site-header__row">
         <Link href="/" className="wordmark">

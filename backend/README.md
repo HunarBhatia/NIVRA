@@ -1,0 +1,57 @@
+# Nivra backend
+
+FastAPI + SQLAlchemy 2 + Alembic. SQLite in development, PostgreSQL in production (decision D15). The reasons behind each choice are in `../PROJECT_DETAILS.txt` (sections 13 and 14).
+
+## Setup (Windows, Git Bash)
+
+```bash
+cd backend
+python -m venv .venv
+./.venv/Scripts/python -m pip install -r requirements-dev.txt
+cp .env.example .env            # then fill in NIVRA_DATA_KEY if you want optional emails
+./.venv/Scripts/alembic upgrade head
+```
+
+## Run
+
+```bash
+./.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
+```
+
+Then start the website (`cd ../web && npm run dev`) and open http://localhost:3000. The website proxies `/api/*` to this server, so the browser only ever talks to `localhost:3000`.
+
+Interactive API docs (development only): http://localhost:8000/api/docs
+
+## Test
+
+```bash
+./.venv/Scripts/python -m pytest -q
+```
+
+## Database changes
+
+Edit `app/models.py`, then:
+
+```bash
+./.venv/Scripts/alembic revision --autogenerate -m "describe the change"
+./.venv/Scripts/alembic upgrade head
+```
+
+## API (phase 2)
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/api/health` | Liveness check |
+| POST | `/api/auth/register` | Create an anonymous account from a passphrase; returns the Nivra ID and logs in |
+| POST | `/api/auth/login` | Log in with Nivra ID + passphrase (rate-limited) |
+| POST | `/api/auth/logout` | End the session on the server |
+| GET | `/api/auth/me` | The logged-in account |
+| PATCH | `/api/account` | Add or remove the optional email (stored encrypted) |
+| DELETE | `/api/account` | Delete the account and all its data (needs the passphrase) |
+| GET / POST | `/api/cases` | List or create cases |
+| GET / PATCH / DELETE | `/api/cases/{id}` | Read, rename the notice signature, or delete a case |
+| POST | `/api/cases/{id}/links` | Add links (validated, duplicates skipped) |
+| POST | `/api/links/{id}/status` | Change a link's status (server enforces allowed moves) |
+| POST | `/api/links/{id}/simulate-deadline` | Prototype only; disabled in production |
+
+Every case and link query is scoped to the logged-in account, so another account's IDs return 404.

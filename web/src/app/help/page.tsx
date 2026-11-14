@@ -81,7 +81,7 @@ export default function HelpPage() {
         <h2 id="talk">Look after yourself</h2>
         <p>
           You don&apos;t have to look at the content again to deal with it. A trusted friend can
-          open your case and do the reporting for you, using your Case ID and passphrase.
+          open your case and do the reporting for you, using your Nivra ID and passphrase.
         </p>
       </section>
     </div>
