@@ -10,7 +10,7 @@ with their own migrations, so each lands with the code that uses it
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -233,7 +233,8 @@ class DiscoveredMatch(Base):
     classification: Mapped[str] = mapped_column(String(16))  # exact | high | possible
     sha256_equal: Mapped[bool] = mapped_column(Boolean, default=False)
     phash_distance: Mapped[int | None] = mapped_column(Integer, default=None)
-    cosine: Mapped[float | None] = mapped_column(default=None)
+    # Explicit Float: SQLAlchemy 2.1 would otherwise map float to Double (21.3).
+    cosine: Mapped[float | None] = mapped_column(Float, default=None)
     status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|confirmed|rejected
     case_link_id: Mapped[str | None] = mapped_column(
         ForeignKey("case_links.id", ondelete="SET NULL"), default=None

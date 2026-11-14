@@ -1,3 +1,6 @@
 
 # Evidence reports downloaded while testing
 nivra-evidence-report-*.html
+
+# Real deployment secrets
+deploy/.env.production

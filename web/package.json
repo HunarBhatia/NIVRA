@@ -8,7 +8,8 @@
     "prebuild": "node scripts/sync-platforms.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test --experimental-strip-types \"tests/*.test.ts\" && node --experimental-strip-types scripts/check-phash.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1",

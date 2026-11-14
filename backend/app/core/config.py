@@ -96,6 +96,16 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from: str = "Nivra <no-reply@example.invalid>"
 
+    # Production hardening (phase 8, section 21)
+    allowed_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    max_request_bytes: int = 15_000_000
+    log_format: Literal["text", "json"] = "text"
+    login_attempts_per_account_per_hour: int = 20
+    retention_audit_days: int = 365
+    retention_notifications_days: int = 90
+    retention_jobs_days: int = 180
+    retention_agent_runs_days: int = 180
+
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True
 
@@ -118,6 +128,12 @@ def get_settings() -> Settings:
             raise RuntimeError("NIVRA_ENABLE_PROTOTYPE_TOOLS must be false in production")
         if settings.discovery_allow_private_hosts:
             raise RuntimeError("NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS must be false in production")
+        if not settings.data_key:
+            raise RuntimeError("NIVRA_DATA_KEY is required in production")
+        if any(not o.startswith("https://") for o in settings.allowed_origins):
+            raise RuntimeError("NIVRA_ALLOWED_ORIGINS must list only https:// origins in production")
+        if settings.agent_checkpoint_path.startswith("./") or settings.evidence_dir.startswith("./"):
+            raise RuntimeError("Use absolute paths for NIVRA_AGENT_CHECKPOINT_PATH and NIVRA_EVIDENCE_DIR")
         if settings.database_url.startswith("sqlite"):
             raise RuntimeError("Use PostgreSQL in production (D15)")
     return settings

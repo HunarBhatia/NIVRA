@@ -137,7 +137,16 @@ def deadline_reminders(db: Session, now: datetime | None = None) -> int:
     return made
 
 
+_last_purge: datetime | None = None
+
+
 def run_scheduled(db: Session, now: datetime | None = None) -> dict[str, int]:
+    global _last_purge
     now = now or datetime.now(UTC)
-    return {"queued": queue_due_watches(db, now), "reminders": deadline_reminders(db, now),
-            "digests": notify.send_daily_digests(db, now)}
+    out = {"queued": queue_due_watches(db, now), "reminders": deadline_reminders(db, now),
+           "digests": notify.send_daily_digests(db, now)}
+    if _last_purge is None or now - _last_purge > timedelta(hours=24):
+        from app.services.retention import purge
+        out["purged"] = sum(purge(db, now).values())
+        _last_purge = now
+    return out

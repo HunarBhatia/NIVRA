@@ -1565,3 +1565,135 @@ D26 [DECIDED 2026-11-15] Scheduled re-checks run only for pages the user
     explicitly watches; watching is standing approval, always pausable.
 D27 [DECIDED 2026-11-15] Notification emails carry no details at all;
     everything is read inside Nivra after signing in.
+
+
+
+--------------------------------------------------------------------------------
+21. PHASE 8 - PRODUCTION READINESS (2026-11-15)
+--------------------------------------------------------------------------------
+
+21.1 What was done
+A security review with automated scanners, dependency upgrades, request
+hardening, website security headers, data retention, health and
+readiness checks, structured logs, verification on PostgreSQL, deployment
+files, website tests, an end-to-end smoke test, a privacy review and a
+launch checklist. Deployment steps: deploy/DEPLOYMENT.md.
+
+21.2 Dependency audit - the biggest finding
+pip-audit found 101 known vulnerabilities in the backend's pinned packages:
+Pillow (77), Starlette under FastAPI (14) and cryptography (10). Pillow
+mattered most: it decodes images fetched from untrusted websites during
+page checks. Every package was upgraded to its current release (Pillow 13,
+FastAPI 0.163 / Starlette 1.10, cryptography 50, SQLAlchemy 2.1 ...);
+pip-audit now reports none, and all tests still pass.
+
+21.3 Side effect caught by the schema check
+SQLAlchemy 2.1 maps Python float to a different SQL type than before, so
+Alembic's check reported a column change. Fixed by naming the type
+explicitly on that column - the schema and migrations match again.
+
+21.4 Website dependencies
+npm audit: 0 vulnerabilities in what ships to users. 8 moderate findings
+are in the developer lint tooling (a pattern-matching library inside
+ESLint) and never reach production; npm's suggested fix would downgrade the
+lint config to an older Next.js line, so this is accepted as dev-only risk.
+
+21.5 Static analysis
+Bandit (Python security scanner) found only one low-severity, intentional
+case (ignoring malformed HTML while collecting image links).
+
+21.6 Request hardening (backend/app/core/hardening.py)
+Writes from another website's pages are refused (Origin check, on top of
+SameSite cookies); requests over 15 MB are refused before being read;
+every response carries an X-Request-ID that logs share, so a problem can be
+traced without logging content; login is also throttled per Nivra ID (20
+attempts/hour), not only per IP.
+
+21.7 Production refuses unsafe settings
+On top of the earlier checks (Secure cookies, prototype tools off,
+PostgreSQL, no private-host fetching), production now also requires
+NIVRA_DATA_KEY, https-only allowed origins and absolute data paths. Tests
+cover each refusal.
+
+21.8 Website security headers (web/next.config.ts)
+A Content Security Policy (scripts and data only from Nivra itself, plus
+Hugging Face and jsDelivr for the optional on-device AI model), no framing,
+no referrer sent to other sites, camera/microphone/location blocked, HTTPS
+enforced (HSTS) in production, and the "X-Powered-By" header removed.
+
+21.9 The policy that broke the AI model
+Browser testing showed the first policy blocked the on-device AI
+fingerprint: ONNX Runtime starts part of itself from a blob: URL. blob:
+scripts were allowed (only Nivra's own page can create them) and the AI
+check works again with zero policy violations, in dev and production.
+
+21.10 Agent state now deleted with the account
+LangGraph keeps paused agent runs in a separate checkpoint database. Before
+this phase, deleting an account left that saved state behind (drafts with
+placeholders, case type, platform). Account deletion now removes it too;
+a test proves it.
+
+21.11 Data retention (backend/app/services/retention.py)
+Once a day the worker deletes: audit events older than 365 days, read
+updates older than 90 days, finished page checks older than 180 days, and
+finished agent runs (with their saved state) older than 180 days - all
+configurable. Users' cases, evidence and protected images are never
+auto-deleted; only the user deletes them.
+
+21.12 Health, readiness and logs
+/api/health = the process is up; /api/ready = the database answers,
+evidence storage is writable and the platform file loads (503 otherwise).
+NIVRA_LOG_FORMAT=json gives one JSON line per event with its request ID.
+Logs hold methods, routes, status codes and error types - never content.
+
+21.13 Launch checklist - NOT done, needs people
+1. Verify every platform entry on the platform's own site; set verified
+   and last_verified (shared/platforms.json).
+2. A lawyer reviews the notice templates and legal grounds.
+3. Terms of use and a privacy policy, incl. India's DPDP Act duties.
+4. A legal entity / operator and a grievance contact for Nivra itself.
+5. Partner NGO and helpline numbers re-checked.
+6. An independent penetration test before public launch.
+7. Choose hosting, set up backups, uptime monitoring and alerting.
+8. Configure real email (SMTP) and test deliverability.
+9. Decide D18 (wider search) and plan CSAM-hash checks for fetched images.
+10. Build and smoke-test the Docker stack on the target server.
+
+21.14 Verified in this phase
+168 backend tests on SQLite and on real PostgreSQL (embedded server via
+pgserver; all 6 migrations applied and the schema matched). 8 website
+encryption tests + 6 shared pHash vectors (npm test). The production
+website build and standalone server: all pages 200, headers present, API
+proxy and readiness OK. The end-to-end smoke test: 14/14 through the
+website proxy. 0 known vulnerabilities in shipped dependencies.
+
+21.15 Not verified
+The Docker images and docker-compose stack were written and reviewed but
+not built here (Docker isn't installed on this machine). No penetration
+test, load test or real SMTP delivery. Windows/OneDrive note: the dev server
+sometimes needs web/.next deleted and a restart (18.14); once a Turbopack
+helper process failed to start (0xc0000142) and a clean restart fixed it.
+
+21.16 Privacy review - what Nivra stores, and how
+Account: Nivra ID; passphrase as an Argon2id hash; optional email
+encrypted (Fernet). Sessions: SHA-256 of the token only. Cases and links:
+URLs, statuses and history in plain form (the server must read them to
+re-check pages). Protected images: no images - fingerprints only, made in
+the browser. Evidence: ciphertext only; the key never leaves the browser.
+Candidate images found online: never stored. Notifications: short text with
+host names, not full links. Audit trail: actions and IDs, no content, kept
+365 days. LLM: Gemini receives case type, platform and legal grounds only.
+
+21.17 Privacy review - known residual risks
+Links and case history are readable by anyone who controls the server
+(needed for monitoring) - protect the server and database accordingly.
+Fingerprints and embeddings could leak some visual features (13.9). The
+optional email reveals that the person uses Nivra to whoever reads it.
+Gemini prompts fall under Google's API data terms.
+
+D28 [DECIDED 2026-11-15] Dependencies are audited (pip-audit, npm audit,
+    bandit) before every release; shipped dependencies must have no known
+    vulnerabilities.
+D29 [DECIDED 2026-11-15] Deployment is four containers (PostgreSQL, API,
+    exactly one worker, website) behind a TLS reverse proxy; the API
+    refuses to start with unsafe production settings.

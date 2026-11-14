@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, rate_limit_auth
 from app.core.config import get_settings
+from app.core.ratelimit import RateLimiter
 from app.core.security import (
     hash_passphrase,
     hash_token,
@@ -65,9 +66,17 @@ def register(body: RegisterIn, response: Response, db: DB) -> RegisterOut:
     return RegisterOut(account_code=code)
 
 
+# Per-account throttle: slows guessing one Nivra ID from many IP addresses.
+account_limiter = RateLimiter(settings.login_attempts_per_account_per_hour, 3600)
+
+
 @router.post("/login", response_model=AccountOut, dependencies=[Depends(rate_limit_auth)])
 def login(body: LoginIn, response: Response, db: DB) -> AccountOut:
-    user = db.scalar(select(User).where(User.account_code == normalise_account_code(body.account_code)))
+    code = normalise_account_code(body.account_code)
+    if not account_limiter.allow(code):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "Too many attempts for this Nivra ID. Please try again later.")
+    user = db.scalar(select(User).where(User.account_code == code))
     if not verify_passphrase(user.passphrase_hash if user else None, body.passphrase):
         # Same message whether the ID exists or not.
         if user:

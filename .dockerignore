@@ -1,0 +1,15 @@
+# Never send secrets, local data or build output into an image.
+**/.env
+**/.env.*
+!**/.env.example
+!deploy/.env.production.example
+**/*.db
+**/*.db-*
+**/evidence-store
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+web/.next
+.git
+nivra-evidence-report-*.html
