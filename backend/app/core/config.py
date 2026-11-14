@@ -85,6 +85,17 @@ class Settings(BaseSettings):
     evidence_max_item_bytes: int = 10_000_000  # ciphertext, ~7 MB original
     evidence_quota_bytes: int = 200_000_000  # per account
 
+    # Monitoring and notifications (phase 7, section 20)
+    scheduler_interval_seconds: int = 60
+    scheduled_jobs_per_tick: int = 5
+    watch_min_interval_hours: int = 12
+    email_backend: Literal["console", "smtp"] = "console"
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "Nivra <no-reply@example.invalid>"
+
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True
 

@@ -75,5 +75,9 @@ def process_job(
     job.candidates_skipped = report.skipped
     job.finished_at = datetime.now(UTC)
     audit.record(db, f"discovery.job_{job.status}", job.user_id, "discovery_job", job.id)
+    db.flush()
+    # Scheduled re-checks of watched pages turn into notifications (section 20).
+    from app.services.monitoring import on_job_finished
+    on_job_finished(db, job)
     db.commit()
     return job

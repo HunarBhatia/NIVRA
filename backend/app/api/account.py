@@ -7,7 +7,7 @@ from app.api.deps import DB, CurrentUser
 from app.core.config import get_settings
 from app.core.security import EncryptionUnavailable, encrypt_field, verify_passphrase
 from app.schemas import AccountDeleteIn, AccountOut, AccountUpdateIn
-from app.services import audit
+from app.services import audit, notify
 from app.services.evidence_store import blob_ids, delete_blobs
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -19,6 +19,7 @@ def update_account(body: AccountUpdateIn, user: CurrentUser, db: DB) -> AccountO
     if "email" in body.model_fields_set:
         if body.email is None:
             user.email_encrypted = None
+            notify.prefs_for(db, user.id).email_mode = "off"  # nowhere to send now
             audit.record(db, "account.email_removed", user.id)
         else:
             try:

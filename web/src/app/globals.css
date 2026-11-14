@@ -853,3 +853,27 @@ input[type="file"]::file-selector-button {
   font-variant-numeric: lining-nums tabular-nums;
   color: var(--color-ink);
 }
+
+/* ---------- Header "Updates" link with unread count ---------- */
+.updates-link {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--color-ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  white-space: nowrap;
+}
+.updates-link:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+}
+.updates-count {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  padding: 0 var(--space-xs);
+  line-height: 1.5;
+}

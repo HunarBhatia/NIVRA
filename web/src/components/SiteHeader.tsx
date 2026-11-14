@@ -1,5 +1,6 @@
 import Link from "next/link";
 import QuickExit from "./QuickExit";
+import UpdatesLink from "./UpdatesLink";
 
 const NAV = [
   { href: "/start", label: "Start a case" },
@@ -36,6 +37,7 @@ export default function SiteHeader() {
             ))}
           </div>
         </details>
+        <UpdatesLink />
         <QuickExit />
       </div>
     </header>

@@ -7,6 +7,7 @@ import { FollowUpAssistant, NoticeAssistant } from "@/components/Assistant";
 import CaseTimeline from "@/components/CaseTimeline";
 import ComplaintTracker, { COMPLAINTS_CHANGED, announceComplaintsChanged } from "@/components/ComplaintTracker";
 import EvidenceLocker from "@/components/EvidenceLocker";
+import WatchToggle from "@/components/WatchToggle";
 import * as api from "@/lib/api";
 import { ApiError, isOverdue } from "@/lib/api";
 import { CATEGORY_LABEL, generateNotice } from "@/lib/notices";
@@ -656,6 +657,8 @@ function LinkRow({
                 </a>
               </p>
             </div>
+
+            <WatchToggle linkId={link.id} url={link.url} />
 
             <StatusActions
               link={link}

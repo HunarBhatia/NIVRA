@@ -13,6 +13,9 @@ import type {
   LockerInfo,
   Overview,
   TimelineItem,
+  NivraNotification,
+  NotificationPrefs,
+  WatchedPage,
   CaseSummary,
   DiscoveredMatch,
   DiscoveryJob,
@@ -264,3 +267,34 @@ export const getEvidenceBlob = (id: string) =>
 
 export const deleteEvidence = (id: string) =>
   call<void>(`/evidence/${encodeURIComponent(id)}`, json("DELETE"));
+
+// ---------- Monitoring and notifications (phase 7) ----------
+
+export const listWatches = () => call<WatchedPage[]>("/watch");
+
+export const addWatch = (target: { url?: string; link_id?: string; interval_hours?: number }) =>
+  call<WatchedPage>("/watch", json("POST", target));
+
+export const updateWatch = (id: string, patch: { enabled?: boolean; interval_hours?: number }) =>
+  call<WatchedPage>(`/watch/${encodeURIComponent(id)}`, json("PATCH", patch));
+
+export const removeWatch = (id: string) =>
+  call<void>(`/watch/${encodeURIComponent(id)}`, json("DELETE"));
+
+export const listNotifications = () => call<NivraNotification[]>("/notifications");
+
+export const unreadCount = () => call<{ unread: number }>("/notifications/unread-count");
+
+export const markNotificationRead = (id: string) =>
+  call<NivraNotification>(`/notifications/${encodeURIComponent(id)}/read`, json("POST"));
+
+export const markAllNotificationsRead = () =>
+  call<{ marked: number }>("/notifications/read-all", json("POST"));
+
+export const getNotificationPrefs = () => call<NotificationPrefs>("/settings/notifications");
+
+export const updateNotificationPrefs = (patch: Partial<NotificationPrefs>) =>
+  call<NotificationPrefs>("/settings/notifications", json("PATCH", patch));
+
+export const setEmail = (email: string | null) =>
+  call<Account>("/account", json("PATCH", { email }));

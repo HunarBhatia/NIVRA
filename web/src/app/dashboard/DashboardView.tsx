@@ -140,6 +140,8 @@ export default function DashboardView() {
       <section className="section stack" style={{ paddingTop: 0 }}>
         <div className="actions">
           <Link className="btn" href="/protect">Protected images and page checks</Link>
+          <Link className="btn" href="/notifications">Updates</Link>
+          <Link className="btn" href="/settings">Settings</Link>
           <Link className="btn btn--ghost" href="/help">Get help now</Link>
         </div>
       </section>

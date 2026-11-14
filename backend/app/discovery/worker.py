@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 
+from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.discovery.jobs import process_job
 from app.models import DiscoveryJob
@@ -64,10 +65,22 @@ def run_once() -> bool:
     return True
 
 
+def run_scheduler_tick() -> None:
+    """Monitoring (section 20): due re-checks, deadline reminders, digests."""
+    from app.services.monitoring import run_scheduled
+    with SessionLocal() as db:
+        run_scheduled(db)
+
+
 def run_forever(stop: threading.Event | None = None, poll_seconds: float = 2.0) -> None:
     recover_stale()
+    interval = get_settings().scheduler_interval_seconds
+    last_tick = 0.0
     while not (stop and stop.is_set()):
         try:
+            if time.monotonic() - last_tick >= interval:
+                last_tick = time.monotonic()
+                run_scheduler_tick()
             if not run_once():
                 time.sleep(poll_seconds)
         except Exception as e:  # keep the loop alive; never log job content

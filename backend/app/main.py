@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import account, agents, auth, cases, complaints, discovery, evidence, images
+from app.api import account, agents, auth, cases, complaints, discovery, evidence, images, monitoring
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -32,7 +32,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Nivra API",
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
     # Interactive docs are handy in development, but not exposed in production.
     docs_url=None if settings.is_production else "/api/docs",
@@ -89,3 +89,4 @@ app.include_router(discovery.router)
 app.include_router(agents.router)
 app.include_router(complaints.router)
 app.include_router(evidence.router)
+app.include_router(monitoring.router)

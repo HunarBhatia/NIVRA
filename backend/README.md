@@ -127,4 +127,17 @@ Evidence arrives already encrypted by the browser; the server can't read it. Fil
 
 The platform directory lives in `../shared/platforms.json`. The website copies it automatically before `npm run dev` / `npm run build`; a backend test fails if the copies differ.
 
+## API (phase 7: monitoring and notifications)
+
+| Method | Path | What it does |
+|---|---|---|
+| GET / POST | `/api/watch` | List watched pages / start watching a page or case link |
+| PATCH / DELETE | `/api/watch/{id}` | Pause, resume, change interval (12, 24, 72 or 168 hours) / stop watching |
+| GET | `/api/notifications` | Latest updates |
+| GET | `/api/notifications/unread-count` | Number of unread updates |
+| POST | `/api/notifications/{id}/read`, `/api/notifications/read-all` | Mark as read |
+| GET / PATCH | `/api/settings/notifications` | Monitoring switch, update kinds, email mode |
+
+The worker runs a scheduler tick every `NIVRA_SCHEDULER_INTERVAL_SECONDS` (default 60): it queues due re-checks of watched pages, creates deadline reminders and sends daily digests. Emails are discreet (no details) and are only logged in development (`NIVRA_EMAIL_BACKEND=console`); use `smtp` with the `NIVRA_SMTP_*` settings in production. Optional email needs `NIVRA_DATA_KEY`.
+
 Every case and link query is scoped to the logged-in account, so another account's IDs return 404.

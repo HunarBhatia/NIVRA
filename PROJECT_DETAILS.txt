@@ -1458,3 +1458,110 @@ D25 [DECIDED 2026-11-15] The LLM provider is Google Gemini
     (gemini-3.1-flash-lite) via the official google-genai SDK; Claude and
     the Prune adapter are removed. Supersedes the provider parts of D16.
     Why: team decision.
+
+
+
+--------------------------------------------------------------------------------
+20. PHASE 7 - MONITORING AND NOTIFICATIONS (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+20.1 What was built
+Scheduled re-checks of pages the user chooses to watch, automatic deadline
+reminders, in-app updates (an "Updates" link with an unread count, and an
+Updates page), optional discreet emails, and a Settings page with every
+monitoring and notification control.
+
+20.2 The rule behind it
+Nivra notices; the user decides. A page that stops loading "may have been
+removed"; an image that reappears "may be back". Nivra never marks a link
+removed, resolved or back online by itself - tested in the browser (the
+link stayed "removed" after a re-check found the image again).
+
+20.3 Watching a page [DECIDED - D26]
+Re-checks happen ONLY for pages the user explicitly watches ("Watch this
+page" on a case link, or a link added in Settings). Turning watching on is
+the user's standing approval for those visits - the same way approving a
+plan works for one-off checks (17.9). Each watch can be paused, re-timed
+(every 12 hours, daily, every 3 days, weekly) or stopped.
+
+20.4 How a re-check runs
+The worker's scheduler tick (every 60 s by default) queues a normal
+discovery job for each due watched page, using the same safe fetcher as
+user-started checks (SSRF guard, robots.txt, limits - section 16). It skips
+pages already being checked, respects the user's hourly limit, and does
+nothing while the user's master switch "Keep re-checking" is off.
+
+20.5 What turns into an update
+After a scheduled check: page returns 404 -> "no longer loads, may have
+been removed"; a match on a link the user marked removed -> "may be back";
+new possible matches -> "possible match to review"; a page that loads again
+after being gone -> "loads again". Checks the user starts themselves don't
+create updates (they see the result directly).
+
+20.6 Deadline reminders
+The scheduler also scans reported links: one "Deadline soon" reminder when
+a platform's 24-hour window is nearly up, then at most one "Deadline passed"
+per link per day until the user records an outcome. Same rules as the
+Follow-up agent (17.12).
+
+20.7 No repeats
+Every update has a dedupe key (e.g. "overdue:<link>:<date>"), unique per
+account in the database, so a tick that runs twice can't create the same
+update twice.
+
+20.8 Controls (Settings page)
+Master switch for monitoring; the list of watched pages with interval,
+pause and stop; which kinds of update to receive (matches, page changes,
+deadlines); and email: never, when there's an update, or at most once a day.
+
+20.9 Discreet email [DECIDED - D27]
+Emails say only "You have an update from Nivra - sign in to see it", never
+a site, a link or what happened, because someone else may see the user's
+inbox. The address is stored encrypted (14.11); removing it switches email
+off. Delivery is "console" in development (logged, not sent) or SMTP in
+production (NIVRA_EMAIL_BACKEND=smtp plus NIVRA_SMTP_* settings).
+
+20.10 Local setup note
+Optional email needs NIVRA_DATA_KEY (the key that encrypts addresses); a
+local one was generated into backend/.env during testing. Without it, the
+server refuses to store emails rather than keep them unencrypted.
+
+20.11 Verified in the browser
+"Watch this page" on a case link; within one scheduler tick the page was
+re-checked, an image matching a protected one was found on a link marked
+removed, and the update "A removed page ... may be back" appeared, with the
+header showing the unread count; the link's status was not changed; the
+next check was set 24 hours later. A deadline reminder for an overdue link
+appeared on its own. Settings: email added (encrypted), immediate emails
+chosen, mark-all-read worked.
+
+20.12 Problems found while testing
+A test helper treated an empty fake website as "use the default site", so
+the "page disappeared" test passed for the wrong reason at first - fixed by
+giving it a site that really lacks the page. Adding an email failed until
+NIVRA_DATA_KEY was set (working as designed, 20.10).
+
+20.13 API added (backend/app/api/monitoring.py)
+GET/POST /api/watch, PATCH/DELETE /api/watch/{id}; GET /api/notifications,
+GET /api/notifications/unread-count, POST /api/notifications/{id}/read,
+POST /api/notifications/read-all; GET/PATCH /api/settings/notifications.
+
+20.14 Tests (152 backend tests passing)
+Watch create/validate/de-duplicate/update/delete and privacy; due checks
+queued once and rescheduled; paused watches and the master switch; hourly
+limit; match / page gone / page back updates; user-started checks don't
+notify; turned-off kinds; deadline reminders once per day; read and
+read-all; email needs an address; immediate emails contain no details;
+daily digest once a day; account deletion removes everything.
+
+20.15 Limits
+Scheduled checks only see pages the user lists (see D18 on wider search).
+The scheduler runs inside the worker; with several workers in production,
+run exactly one scheduler (or move to a proper scheduler) to avoid
+duplicate queueing - the dedupe keys stop duplicate updates, but not
+duplicate visits. No push notifications or SMS.
+
+D26 [DECIDED 2026-11-15] Scheduled re-checks run only for pages the user
+    explicitly watches; watching is standing approval, always pausable.
+D27 [DECIDED 2026-11-15] Notification emails carry no details at all;
+    everything is read inside Nivra after signing in.

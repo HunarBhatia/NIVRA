@@ -358,3 +358,66 @@ class EvidenceItem(Base):
     has_blob: Mapped[bool] = mapped_column(Boolean, default=False)
     size: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+# ---------- Phase 7: monitoring and notifications ----------
+
+
+class WatchedPage(Base):
+    """A page the user asked Nivra to keep re-checking on a schedule. Turning
+    watching on is the user's standing approval for these visits (20.3)."""
+
+    __tablename__ = "watched_pages"
+    __table_args__ = (UniqueConstraint("user_id", "url", name="uq_watch_user_url"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    host: Mapped[str] = mapped_column(String(255))
+    link_id: Mapped[str | None] = mapped_column(
+        ForeignKey("case_links.id", ondelete="SET NULL"), default=None
+    )
+    interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(default=None)
+    next_check_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+    last_job_id: Mapped[str | None] = mapped_column(String(32), default=None)
+    last_result: Mapped[str | None] = mapped_column(String(32), default=None)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Notification(Base):
+    """An in-app update. Holds only short text (hosts, not full links) and
+    where in the app to look. `dedupe_key` stops repeats (e.g. one deadline
+    reminder per link per day)."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedupe_key", name="uq_notification_dedupe"),
+        Index("ix_notifications_user_read", "user_id", "read_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(24))  # match|deadline|page_gone|page_back|system
+    title: Mapped[str] = mapped_column(String(160))
+    body: Mapped[str] = mapped_column(String(400))
+    href: Mapped[str] = mapped_column(String(120), default="/dashboard")
+    dedupe_key: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(default=None)
+    emailed_at: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class NotificationPrefs(Base):
+    """Per-account notification and monitoring controls (20.8)."""
+
+    __tablename__ = "notification_prefs"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    monitoring_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_matches: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_deadlines: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_page_changes: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_mode: Mapped[str] = mapped_column(String(16), default="off")  # off|immediate|daily
+    last_digest_at: Mapped[datetime | None] = mapped_column(default=None)

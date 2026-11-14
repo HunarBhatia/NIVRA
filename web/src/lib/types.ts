@@ -242,3 +242,37 @@ export interface EvidenceItemRaw {
 export type LockerInfo =
   | { initialized: false }
   | { initialized: true; salt: string; key_check: string; kdf: string };
+
+// ---------- Monitoring and notifications (phase 7) ----------
+
+export interface WatchedPage {
+  id: string;
+  url: string;
+  host: string;
+  link_id: string | null;
+  interval_hours: number;
+  enabled: boolean;
+  last_checked_at: string | null;
+  next_check_at: string;
+  last_result: string | null;
+}
+
+export interface NivraNotification {
+  id: string;
+  kind: "match" | "deadline" | "page_gone" | "page_back" | "system";
+  title: string;
+  body: string;
+  href: string;
+  created_at: string;
+  read: boolean;
+}
+
+export interface NotificationPrefs {
+  monitoring_enabled: boolean;
+  notify_matches: boolean;
+  notify_deadlines: boolean;
+  notify_page_changes: boolean;
+  email_mode: "off" | "immediate" | "daily";
+  has_email: boolean;
+  email_backend: "console" | "smtp";
+}
