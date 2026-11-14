@@ -19,12 +19,19 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  // suppressHydrationWarning: browser extensions (e.g. custom-cursor ones)
+  // add attributes to <html>/<body> before React loads, which would otherwise
+  // trigger a false hydration error. It only affects these two tags'
+  // own attributes, not anything inside them.
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

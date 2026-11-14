@@ -444,6 +444,12 @@ Next.js 16 has breaking changes from older versions. web/AGENTS.md (created
 by Next.js itself) says to check the docs bundled in
 node_modules/next/dist/docs/ before writing code, not to rely on memory.
 
+10.14a Hydration warning from browser extensions (fixed 2026-11-14)
+A custom-cursor browser extension added attributes to <html> before React
+loaded, so Next.js showed a "hydration mismatch" error. It was not our bug.
+We added suppressHydrationWarning to <html> and <body> in layout.tsx; it
+ignores only those two tags' own attributes. Victims use extensions too.
+
 10.15 Branching workflow
 main always holds working code. Each piece of work happens on its own branch
 (e.g. setup/mvp-architecture), gets pushed, and is merged into main through
