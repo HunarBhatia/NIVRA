@@ -93,4 +93,18 @@ Jobs run in a background thread of the API in development. In production, run th
 
 To test discovery against a page on your own machine, start the API with `NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS=true` and use `127.0.0.1` links. Never enable it in production (the server refuses to start).
 
+## API (phase 5: AI agents)
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/api/agents/status` | Whether an LLM is configured, and which |
+| POST | `/api/agents/complaint` | Draft a notice for a link, then wait for approval |
+| POST | `/api/agents/verification` | Explain a match (no approval needed; never decides) |
+| POST | `/api/agents/follow-up` | Check deadlines; draft follow-ups, then wait for approval |
+| POST | `/api/agents/discovery` | Plan page re-checks, then wait for approval |
+| GET | `/api/agents/runs`, `/api/agents/runs/{id}` | Runs, optionally filtered by `agent` and `subject_id` |
+| POST | `/api/agents/runs/{id}/decision` | `approve` (optionally `approved_ids`) or `reject` |
+
+AI drafting is off by default (`NIVRA_LLM_PROVIDER=none`): agents use templates and rules. To use Claude, set `NIVRA_LLM_PROVIDER=anthropic` and `NIVRA_ANTHROPIC_API_KEY`. The model only ever receives the case type, platform and legal grounds, never links, names or images.
+
 Every case and link query is scoped to the logged-in account, so another account's IDs return 404.

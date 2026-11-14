@@ -130,3 +130,32 @@ export interface DiscoveredMatch {
   discovered_at: string;
   reviewed_at: string | null;
 }
+
+// ---------- AI agents (phase 5) ----------
+
+export interface AgentStatus {
+  llm_available: boolean;
+  llm_provider: string;
+  model: string | null;
+  runtime: string;
+}
+
+export interface DraftText {
+  subject: string;
+  body: string;
+}
+
+export interface AgentRun {
+  id: string;
+  agent: "complaint" | "verification" | "follow_up" | "discovery";
+  status: "running" | "awaiting_approval" | "completed" | "rejected" | "failed";
+  subject_id: string | null;
+  used_llm: boolean;
+  llm_provider: string;
+  error_code: string | null;
+  created_at: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shape depends on the agent
+  output: Record<string, any>;
+  preview?: DraftText;
+  previews?: (DraftText & { id: string; link_id: string; kind: string; source: string })[];
+}

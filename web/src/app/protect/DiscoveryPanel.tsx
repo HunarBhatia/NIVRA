@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { MatchExplainer, RecheckPlanner } from "@/components/Assistant";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { CATEGORY_LABEL } from "@/lib/notices";
@@ -130,6 +131,8 @@ export default function DiscoveryPanel({ onMatchesChanged }: { onMatchesChanged?
         </form>
         {error && <p className="error">{error}</p>}
 
+        <RecheckPlanner onQueued={() => refresh().catch(() => {})} />
+
         {jobs.length > 0 && (
           <div>
             <h3 style={{ marginBottom: "var(--space-xs)" }}>Recent checks</h3>
@@ -237,6 +240,7 @@ function MatchRow({
           </span>
         </div>
         <p className="small muted">{evidence}</p>
+        <MatchExplainer matchId={m.id} />
         <p className="small">
           <a href={m.source_page_url} target="_blank" rel="noreferrer noopener">
             Open the page in a new tab

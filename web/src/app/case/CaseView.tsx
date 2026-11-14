@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AccountGate from "@/components/AccountGate";
+import { FollowUpAssistant, NoticeAssistant } from "@/components/Assistant";
 import * as api from "@/lib/api";
 import { ApiError, isOverdue } from "@/lib/api";
 import { CATEGORY_LABEL, generateNotice } from "@/lib/notices";
@@ -269,6 +270,8 @@ function Dashboard({
         </p>
       )}
 
+      <FollowUpAssistant onApplied={() => onSwitch(c.id)} />
+
       <section aria-labelledby="links-h" style={{ marginBottom: "var(--space-2xl)" }}>
         <h2 id="links-h" style={{ marginBottom: "var(--space-md)" }}>
           Links
@@ -523,6 +526,7 @@ function LinkRow({
                 </a>
               )}
             </div>
+            <NoticeAssistant caseId={c.id} linkId={link.id} platformName={platform?.name} />
           </div>
 
           {/* Right: where to send, status, next step */}

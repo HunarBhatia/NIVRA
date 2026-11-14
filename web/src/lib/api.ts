@@ -3,6 +3,8 @@
 import type { Fingerprints } from "./fingerprint";
 import type {
   Account,
+  AgentRun,
+  AgentStatus,
   CaseLink,
   CaseSummary,
   DiscoveredMatch,
@@ -173,4 +175,36 @@ export const addMatchToCase = (id: string, target: { case_id?: string; category?
   call<{ case_id: string; link_id: string }>(
     `/matches/${encodeURIComponent(id)}/add-to-case`,
     json("POST", target),
+  );
+
+// ---------- AI agents (phase 5) ----------
+// Anything consequential waits for decideRun() - the user's approval.
+
+export const agentStatus = () => call<AgentStatus>("/agents/status");
+
+export const draftComplaint = (caseId: string, linkId: string, platformName?: string) =>
+  call<AgentRun>(
+    "/agents/complaint",
+    json("POST", { case_id: caseId, link_id: linkId, platform_name: platformName ?? null }),
+  );
+
+export const explainMatch = (matchId: string) =>
+  call<AgentRun>("/agents/verification", json("POST", { match_id: matchId }));
+
+export const runFollowUp = () => call<AgentRun>("/agents/follow-up", json("POST"));
+
+export const planDiscovery = (urls: string[] = []) =>
+  call<AgentRun>("/agents/discovery", json("POST", { urls }));
+
+export const decideRun = (runId: string, decision: "approve" | "reject", approvedIds?: string[]) =>
+  call<AgentRun>(
+    `/agents/runs/${encodeURIComponent(runId)}/decision`,
+    json("POST", { decision, approved_ids: approvedIds ?? null }),
+  );
+
+export const listAgentRuns = (agent: string, subjectId?: string) =>
+  call<AgentRun[]>(
+    `/agents/runs?agent=${encodeURIComponent(agent)}${
+      subjectId ? `&subject_id=${encodeURIComponent(subjectId)}` : ""
+    }`,
   );

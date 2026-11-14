@@ -1118,3 +1118,154 @@ D18 [OPEN 2026-11-15] How (or whether) to search the wider web.
     image to a licensed reverse-search API (e.g. TinEye, paid) from their
     browser, an informed exception to D13; (c) apply to industry hash-
     sharing programmes (StopNCII-style) as a partner. Team to decide.
+
+
+
+--------------------------------------------------------------------------------
+17. PHASE 5 - AI AGENTS (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+17.1 What was built
+Four agents, each a LangGraph graph (backend/app/agents): Discovery
+Coordinator, Verification Assistant, Complaint Generation and Follow-up.
+They appear on the website as an "Assistant" box per link, a "Deadlines and
+follow-ups" panel, "Explain this match" and "Plan re-checks of known pages".
+
+17.2 The one rule behind the design
+The assistant drafts, explains and plans. It never sends, submits, decides
+or declares anything. Every consequential step pauses until the user
+presses an approve button, and sending a notice is always the user's own
+action outside Nivra.
+
+17.3 Why LangGraph
+Each agent is a small graph of nodes (gather -> rules -> optional LLM ->
+approval -> apply). LangGraph's interrupt() pauses a graph mid-run for
+human approval, and its checkpointer saves the paused state so the run can
+be resumed later - even after a server restart (tested).
+
+17.4 LLM reasoning kept separate from app logic
+Facts, deadlines, legal grounds, deduplication and database writes are
+plain code. The LLM only writes or rewords text, inside one node, and its
+output is validated before anything uses it. Remove the LLM and every agent
+still works - with templates and rules.
+
+17.5 Works without an AI key (the default)
+NIVRA_LLM_PROVIDER=none (default) means no model is called; the agents use
+Nivra's templates and the UI says "AI drafting is switched off on this
+server". This machine has no Anthropic key, so the live demo runs in this
+mode. Set NIVRA_LLM_PROVIDER=anthropic and NIVRA_ANTHROPIC_API_KEY to use
+Claude.
+
+17.6 What the LLM is allowed to see
+Only the case type, the platform name, the legal grounds, match scores and
+deadline facts. Never the link, the user's name, image labels or any image.
+Drafts use placeholders ({{URL}}, {{NAME}}, {{DATE}}, {{SENT_DATE}}) that
+Nivra fills in afterwards, for the owner only. A test checks the prompts
+contain no link or name.
+
+17.7 Guardrails on every LLM output (backend/app/llm/guardrails.py)
+Notices must keep the placeholders, contain no links or emails of their
+own, and cite ONLY the sections and rules we supplied (an invented "Section
+420" is rejected). No threats, no claiming to be a lawyer, no guarantees.
+Explanations may not claim certainty, consent status or legality.
+
+17.8 Retries and fallback
+A rejected output is sent back to the model with the reasons, up to 3
+attempts. Retryable errors (rate limits, server errors) retry; others stop.
+If all attempts fail, the template is used and the UI says so. A crash in
+an agent is recorded as a failed run - the user just sees "try again".
+
+17.9 Agent 1 - Discovery Coordinator (no LLM, on purpose)
+Gathers pages worth checking: links the user gives, pages where they
+confirmed a match, and removed links (to catch re-uploads). Drops invalid
+links, duplicates and anything checked in the last 24 hours, and caps the
+plan at the hourly limit. Shows the plan; jobs are queued only after the
+user approves (selected items only).
+
+17.10 Agent 2 - Verification Assistant
+Explains a match from its scores: what the visual difference means, what
+evidence is worth gathering (screenshot with URL and date, uploader's
+account), and the next step. Always ends with: Nivra can't tell whether an
+image is yours or whether it was shared without consent - only you can.
+
+17.11 Agent 3 - Complaint Generation
+Loads the case (ownership checked), selects legal grounds by rule
+(backend/app/agents/legal.py, mirroring the website's notices), drafts with
+the LLM or the template, then pauses. Approve keeps it as the link's notice
+(shown with a copy button); Discard drops it. Approval never sends anything.
+
+17.12 Agent 4 - Follow-up
+Computes deadlines from the recorded history: overdue (24 h passed), due
+soon, no reply recorded (72 h+), refused, back online. Drafts follow-ups for
+overdue/refused links. Kept drafts are noted on the link's timeline, but
+the status is NOT changed: a prepared message is not a sent one, and sent is
+not resolved. Drafts never claim facts Nivra can't know.
+
+17.13 Claude provider details (backend/app/llm/anthropic_provider.py)
+Official Anthropic Python SDK (2.8.0), model claude-opus-5-5, adaptive
+thinking, effort "low" (configurable), JSON-schema structured output,
+server-side refusal fallbacks enabled (beta server-side-fallback-2026-07-01,
+fallbacks="default"). Errors map to safe codes with a retryable flag. A
+mocked-HTTP test checks the exact request shape.
+
+17.14 Swappable provider and Prune (D16)
+Agents only call get_llm().generate_json(). Prune is an optional provider
+(NIVRA_LLM_PROVIDER=prune) using the Anthropic SDK pointed at Prune's base
+URL, with fallbacks off. UNVERIFIED: Prune's docs don't confirm Messages API
+support or retention. Off by default.
+
+17.15 Maritime runtime (optional, D16)
+backend/app/agents/runtime.py has a MaritimeRuntime that calls Maritime's
+documented chat endpoint, and backend/app/agents/serve.py implements their
+custom-container contract (/health, /chat). It would also need database
+access from Maritime's VM - a deployment decision not yet made. Untested
+against the live service (no account). Off by default.
+
+17.16 Run records and logs
+Each run is an agent_runs row (status: awaiting_approval, completed,
+rejected, failed; which provider; whether the LLM was used; the output for
+the owner; a step log of node names and short codes - never content). The
+paused graph state lives in the LangGraph checkpoint DB (SQLite in dev,
+Postgres checkpointer recommended in production).
+
+17.17 Limits
+30 agent runs per account per hour (protects against runaway LLM cost).
+Runs execute during the request; with a real LLM a draft may take tens of
+seconds. Moving LLM runs to the background worker is a later improvement.
+
+17.18 API (backend/app/api/agents.py)
+GET /api/agents/status; POST /api/agents/complaint, /verification,
+/follow-up, /discovery; GET /api/agents/runs (?agent=&subject_id=), GET
+/api/agents/runs/{id}; POST /api/agents/runs/{id}/decision {approve|reject,
+approved_ids}.
+
+17.19 Tests (115 backend tests passing)
+Template path and approval; LLM path with prompt-privacy check; invented
+law rejected then fixed; always-invalid output falls back; auth / refusal /
+rate-limit errors; crash recorded as failed; restart recovery of a paused
+run; cross-account isolation; verification guardrail; follow-up deadlines
+and approval; coordinator dedupe/limits/approval/rejection; guardrail
+units; Claude request shape and error mapping (mocked HTTP).
+
+17.20 Tested in the browser (template mode)
+Prepared and approved a notice on a real case; "Check deadlines" found the
+overdue link, drafted a follow-up with the real link and date, and keeping
+it added a history note without changing the status; "Explain this match"
+and the re-check planner (which correctly skipped a recently checked page).
+
+17.21 Not verified
+No real Claude call was made (no API key on this machine) - the request
+shape is verified by a mocked test only. Prune and Maritime adapters are
+untested against the live services.
+
+D19 [DECIDED 2026-11-15] Agents are LangGraph graphs with deterministic
+    nodes and at most one LLM node each; consequential steps use interrupt()
+    and resume only on the user's decision.
+    Why: predictable, testable, and humans stay in control.
+
+D20 [DECIDED 2026-11-15] AI drafting is off by default and works from
+    placeholders; the model never sees links, names or images.
+    Why: privacy first; the product must work without any AI provider.
+
+D21 [DECIDED 2026-11-15] The Discovery Coordinator uses no LLM.
+    Why: deciding which sites to visit must be rule-based and explainable.

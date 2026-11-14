@@ -58,6 +58,22 @@ class Settings(BaseSettings):
     # development). In production run `python -m app.discovery.worker` instead.
     inline_worker: bool = True
 
+    # AI agents (phase 5, section 17). "none" = rules and templates only.
+    llm_provider: Literal["none", "anthropic", "prune"] = "none"
+    anthropic_api_key: str | None = None
+    llm_model: str = "claude-opus-5-5"
+    llm_effort: Literal["low", "medium", "high"] = "low"
+    # Optional Prune gateway (unverified for the Messages API; off by default).
+    prune_api_key: str | None = None
+    prune_base_url: str = "https://api.withprune.com"
+    # Where paused agent runs (awaiting approval) are saved.
+    agent_checkpoint_path: str = "./nivra-agents.db"
+    # Where agents run: in this backend ("local") or on Maritime (optional).
+    agent_runtime: Literal["local", "maritime"] = "local"
+    maritime_api_key: str | None = None
+    maritime_agent_id: str | None = None
+    maritime_base_url: str = "https://api.maritime.sh"
+
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True
 

@@ -242,3 +242,31 @@ class DiscoveredMatch(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(default=None)
 
     image: Mapped[ProtectedImage] = relationship()
+
+
+# ---------- Phase 5: AI agents ----------
+
+
+class AgentRun(Base):
+    """One run of an agent. The paused graph itself lives in the LangGraph
+    checkpoint store (thread_id = this id); this row is what the API and the
+    audit trail use. `output` holds drafts/plans for the owner only and never
+    contains image data; LLM prompts never contain links or names (17.6)."""
+
+    __tablename__ = "agent_runs"
+    __table_args__ = (Index("ix_agent_runs_user_subject", "user_id", "agent", "subject_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    agent: Mapped[str] = mapped_column(String(24))  # complaint|verification|follow_up|discovery
+    subject_type: Mapped[str | None] = mapped_column(String(24), default=None)
+    subject_id: Mapped[str | None] = mapped_column(String(32), default=None)
+    # running | awaiting_approval | completed | rejected | failed
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    llm_provider: Mapped[str] = mapped_column(String(16), default="none")
+    used_llm: Mapped[bool] = mapped_column(Boolean, default=False)
+    output: Mapped[dict | None] = mapped_column(JSON, default=None)
+    steps: Mapped[list | None] = mapped_column(JSON, default=None)
+    error_code: Mapped[str | None] = mapped_column(String(32), default=None)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
