@@ -450,6 +450,72 @@ loaded, so Next.js showed a "hydration mismatch" error. It was not our bug.
 We added suppressHydrationWarning to <html> and <body> in layout.tsx; it
 ignores only those two tags' own attributes. Victims use extensions too.
 
+10.15a Working prototype frontend (built 2026-11-14)
+A clickable prototype of the whole first-version journey now exists. You
+can start a case, paste links, get notices, track statuses, see escalation
+steps, lock the case and reopen it. It runs entirely in the browser with no
+server or database yet, so it can be tested today.
+
+10.15b Design direction - "Garden" [DECIDED - D11]
+Warm oat paper, deep green ink, Vollkorn serif headings over Hanken Grotesk
+body text, hairline rules, one leaf-green colour for the main action. It
+feels calm, human and trustworthy - not clinical, not "tech startup", and
+not alarming. No photos of people anywhere, on purpose (victims of image
+abuse should never be shown faces or bodies).
+
+10.15c The signature: the Case ID slip
+The one thing a visitor should remember is the Case ID card (e.g.
+NV-BGUH-9K9R). It is shown on the landing page and the dashboard, because it
+captures Nivra's promise: you get help without giving your name.
+
+10.15d Where the code lives (web/src)
+  app/page.tsx              landing page
+  app/start/StartWizard.tsx the 6-step "Start a case" flow
+  app/case/CaseView.tsx     unlock form + case dashboard
+  app/guides/...            platform directory and per-platform guides
+  app/help/page.tsx         helplines, police reporting, under-18 routes
+  components/               header, footer, quick-exit button
+  lib/platforms.ts          Platform Directory + link -> platform lookup
+  lib/notices.ts            legal grounds + notice template generator
+  lib/caseStore.ts          prototype case storage (see 10.15e)
+  lib/types.ts              shared data types (matches blueprint 10.7)
+  app/globals.css           the whole design system as CSS tokens
+
+10.15e Prototype storage - temporary [DECIDED - D12]
+Cases are stored in the browser's localStorage, and the open case in
+sessionStorage (closing the tab locks it). Passphrases are hashed with
+PBKDF2 (150,000 rounds) and never stored as typed. This is a stand-in:
+the real product stores links on a server (D9) so it can re-check them.
+
+10.15f Quick exit
+The dark "Quick exit" button is on every page, and pressing Esc twice does
+the same. It clears the session and replaces the tab with a Google weather
+search using location.replace, so pressing Back does not return to Nivra.
+
+10.15g How links are recognised
+Pasted text is split one link per line (or comma). Each link's domain is
+matched against the directory, including subdomains (m.facebook.com ->
+Facebook). Unknown sites get generic steps: contact page, hosting company,
+Cloudflare abuse, Google de-indexing.
+
+10.15h How notices are written
+Every notice cites IT Rules 2021 Rule 3(2)(b) (24-hour removal), plus IT Act
+sections matching the category (66E/67/67A for intimate and morphed images,
+66C/66D for impersonation), plus copyright if the user took the photo. They
+are templates, not legal advice, and need a lawyer's review before launch.
+
+10.15i Known prototype limits (must fix before launch)
+- Platform links, steps and helpline numbers are unverified prototype data.
+- Cases live in one browser only; clearing browser data deletes them.
+- "Pretend the deadline passed" is a testing button and must be removed.
+- No server, so no automatic re-checks, reminders or email sending yet.
+
+10.15j How to test as a user
+Run "npm run dev" inside web/, open localhost:3000, click Start a case and
+go through every step with fake links (e.g. instagram.com/p/test1,
+t.me/test/1, randomsite.xyz/a). On the dashboard, mark a link as sent, press
+the prototype deadline button, and check that the escalation steps appear.
+
 10.15 Branching workflow
 main always holds working code. Each piece of work happens on its own branch
 (e.g. setup/mvp-architecture), gets pushed, and is merged into main through
@@ -515,6 +581,15 @@ D9  [DECIDED 2026-11-14] Links/statuses/notices stored server-side; evidence
 D10 [DECIDED 2026-11-14] Repo layout: Next.js app in /web, extension later in
     /extension.
     Why: room for multiple clients in one repo without restructuring later.
+
+D11 [DECIDED 2026-11-14] Visual design: "Garden" direction (warm oat paper,
+    green ink, Vollkorn + Hanken Grotesk, no imagery of people).
+    Why: calm and human for people in distress; words, not pictures, carry
+    the page. Open to change - the user reviews and asks for changes.
+
+D12 [DECIDED 2026-11-14] Prototype stores cases in browser storage.
+    Why: gives a fully clickable prototype today with no backend. To be
+    replaced by the server database (D9) in build phase 3.
 
 
 --------------------------------------------------------------------------------
