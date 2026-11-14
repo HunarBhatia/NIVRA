@@ -4,6 +4,7 @@ import QuickExit from "./QuickExit";
 const NAV = [
   { href: "/start", label: "Start a case" },
   { href: "/case", label: "My case" },
+  { href: "/protect", label: "Protect images" },
   { href: "/guides", label: "Platform guides" },
   { href: "/help", label: "Get help now" },
 ];

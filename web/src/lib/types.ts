@@ -69,3 +69,30 @@ export interface Platform {
   inAppSteps?: string[];
   notes?: string;
 }
+
+// ---------- Protected images (phase 3) ----------
+
+export interface ProtectedImage {
+  id: string;
+  label: string;
+  status: "active" | "paused";
+  consent_version: string;
+  created_at: string;
+  fingerprints: { kind: "sha256" | "phash" | "embedding"; algorithm: string; created_at: string }[];
+}
+
+export type MatchClass = "exact" | "high" | "possible" | "none";
+
+export interface MatchResult {
+  image_id: string;
+  label: string;
+  classification: MatchClass;
+  sha256_equal: boolean;
+  phash_distance: number | null;
+  cosine: number | null;
+}
+
+export interface MatchCheck {
+  results: MatchResult[];
+  thresholds: Record<string, number>;
+}

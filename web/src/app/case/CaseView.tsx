@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import AccountGate from "@/components/AccountGate";
 import * as api from "@/lib/api";
 import { ApiError, isOverdue } from "@/lib/api";
 import { CATEGORY_LABEL, generateNotice } from "@/lib/notices";
@@ -87,7 +88,7 @@ export default function CaseView() {
   }
 
   if (view === "locked" || !account) {
-    return <Unlock onOpen={() => load()} />;
+    return <AccountGate onOpen={() => load()} />;
   }
 
   if (view === "empty" || !current) {
@@ -118,73 +119,6 @@ export default function CaseView() {
       onDeleted={() => load()}
       onLock={lock}
     />
-  );
-}
-
-/* ---------------- Unlock ---------------- */
-
-function Unlock({ onOpen }: { onOpen: () => void }) {
-  const [id, setId] = useState("");
-  const [pass, setPass] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api.login(id, pass);
-      setPass("");
-      onOpen();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="container narrow section">
-      <h1>Open your account</h1>
-      <p style={{ margin: "var(--space-sm) 0 var(--space-xl)" }}>
-        Enter the Nivra ID you were given and your passphrase.
-      </p>
-      <form onSubmit={submit}>
-        <div className="field">
-          <label htmlFor="cid">Nivra ID</label>
-          <input
-            id="cid"
-            className="input num"
-            placeholder="NV-XXXX-XXXX"
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            autoComplete="username"
-            autoCapitalize="characters"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="pass">Passphrase</label>
-          <input
-            id="pass"
-            type="password"
-            className="input"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            autoComplete="current-password"
-          />
-        </div>
-        {error && <p className="error">{error}</p>}
-        <div className="actions" style={{ marginTop: "var(--space-lg)" }}>
-          <button className="btn btn--primary" disabled={busy || !id || !pass}>
-            {busy ? "Checking" : "Open account"}
-          </button>
-          <Link href="/start" className="btn btn--ghost">
-            Start a new case instead
-          </Link>
-        </div>
-      </form>
-    </div>
   );
 }
 

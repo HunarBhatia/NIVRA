@@ -54,4 +54,25 @@ Edit `app/models.py`, then:
 | POST | `/api/links/{id}/status` | Change a link's status (server enforces allowed moves) |
 | POST | `/api/links/{id}/simulate-deadline` | Prototype only; disabled in production |
 
+## API (phase 3: protected images)
+
+Only fingerprints are accepted; no endpoint takes image data (decision D13).
+
+| Method | Path | What it does |
+|---|---|---|
+| GET / POST | `/api/images` | List protected images, or register one from browser-computed fingerprints (consent required) |
+| PATCH | `/api/images/{id}` | Rename, or pause/resume monitoring |
+| PUT | `/api/images/{id}/embedding` | Add or replace the AI similarity fingerprint |
+| DELETE | `/api/images/{id}` | Revoke protection and delete its fingerprints |
+| POST | `/api/images/check` | Compare a copy's fingerprints with your own protected images |
+
+The pHash must match the website's version. After changing either, run both checks:
+
+```bash
+./.venv/Scripts/python -m pytest tests/test_fingerprint.py -q
+cd ../web && node --experimental-strip-types scripts/check-phash.ts
+```
+
+Note: `--reload` may not notice file changes inside a OneDrive folder; restart the server after editing code.
+
 Every case and link query is scoped to the logged-in account, so another account's IDs return 404.

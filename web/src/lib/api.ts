@@ -1,6 +1,16 @@
 "use client";
 
-import type { Account, CaseLink, CaseSummary, Category, LinkStatus, NivraCase } from "./types";
+import type { Fingerprints } from "./fingerprint";
+import type {
+  Account,
+  CaseLink,
+  CaseSummary,
+  Category,
+  LinkStatus,
+  MatchCheck,
+  NivraCase,
+  ProtectedImage,
+} from "./types";
 
 // Client for the Nivra backend (backend/app). Every call goes to /api/*,
 // which Next.js proxies to FastAPI (see next.config.ts). The login session is
@@ -105,3 +115,39 @@ export function isOverdue(link: CaseLink, expectedHours: number) {
   if (link.deadline_override) return true;
   return Date.now() - new Date(link.reported_at).getTime() > expectedHours * 3_600_000;
 }
+
+// ---------- Protected images (phase 3) ----------
+// Only fingerprints are ever sent (D13). See lib/fingerprint.
+
+export const CONSENT_VERSION = "2026-11-v1";
+
+export const listImages = () => call<ProtectedImage[]>("/images");
+
+export const registerImage = (input: {
+  label: string;
+  fingerprints: Fingerprints;
+}) =>
+  call<ProtectedImage>(
+    "/images",
+    json("POST", {
+      label: input.label,
+      consent: { subject_is_adult: true, is_subject_or_authorised: true },
+      consent_version: CONSENT_VERSION,
+      fingerprints: input.fingerprints,
+    }),
+  );
+
+export const updateImage = (id: string, patch: { label?: string; status?: "active" | "paused" }) =>
+  call<ProtectedImage>(`/images/${encodeURIComponent(id)}`, json("PATCH", patch));
+
+export const setImageEmbedding = (id: string, embedding: { model: string; vector: number[] }) =>
+  call<ProtectedImage>(`/images/${encodeURIComponent(id)}/embedding`, json("PUT", embedding));
+
+export const revokeImage = (id: string) =>
+  call<void>(`/images/${encodeURIComponent(id)}`, json("DELETE"));
+
+export const checkCopy = (fp: Omit<Fingerprints, "phash_algorithm">) =>
+  call<MatchCheck>(
+    "/images/check",
+    json("POST", { sha256: fp.sha256, phash: fp.phash, embedding: fp.embedding }),
+  );

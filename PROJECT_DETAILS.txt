@@ -865,3 +865,120 @@ localhost:3000. Full setup steps are in backend/README.md.
 No image registration or fingerprints yet (phase 3). No discovery, agents,
 notifications or email screen. Rate limiting is per process (moves to Redis
 later). Platform data and legal wording still unverified. Not deployed.
+
+
+--------------------------------------------------------------------------------
+15. PHASE 3 - IMAGE REGISTRATION AND FINGERPRINTING (built 2026-11-14)
+--------------------------------------------------------------------------------
+
+15.1 What was built
+A "Protect images" page (/protect). The user picks an image on their own
+device; the browser computes three fingerprints and sends only those to
+Nivra. The image itself is never uploaded (D13). Users can pause, resume or
+remove protection, and check a copy they found against their own images.
+
+15.2 The three fingerprints
+SHA-256: a fingerprint of the exact file bytes - finds byte-identical
+copies only. pHash: a 64-bit "visual" fingerprint that survives resizing,
+recompression and small edits. Embedding: 512 numbers from an AI vision
+model (CLIP) describing the image - catches crops and heavier edits.
+
+15.3 How pHash works (algorithm "phash-dct-v1")
+Shrink the image to 32x32, convert to grey, run a 2-D DCT (the maths behind
+JPEG), keep the 64 lowest-frequency values, and set each bit by whether the
+value is above their median. Similar-looking images keep most bits, so the
+number of differing bits ("Hamming distance") measures similarity.
+
+15.4 Two implementations, one answer
+Registered images are hashed in the browser (TypeScript); candidates found
+online will be hashed on the server (Python, phase 4). Both must agree.
+Shared test vectors (backend/tests/fixtures/phash_vectors.json) are checked
+by pytest AND by web/scripts/check-phash.ts.
+
+15.5 The floating-point bug the vectors caught
+On symmetric images many DCT values are exactly zero in theory but tiny
+noise (1e-13) in practice, and that noise differed between NumPy and
+JavaScript, flipping bits. Fix: a value only counts as "above the median"
+if it beats it by a tiny relative margin (1e-9). Now all vectors match.
+
+15.6 Real-browser cross-check
+The same PNG hashed by the browser and by Python gave identical SHA-256
+and identical pHash (distance 0). A 3000x2000 JPEG differed by 2 of 64
+bits because browsers and Pillow shrink images differently - well inside
+the "high" threshold of 6.
+
+15.7 Why the browser shrinks big images in steps
+A canvas that shrinks a huge photo to 32x32 in one jump skips pixels and
+gives a noisy result. Halving the size repeatedly first approximates
+Pillow's area-averaging resize, keeping browser and server hashes close.
+
+15.8 The AI embedding, on the device
+CLIP ViT-B/32 (8-bit quantised) runs in the browser through transformers.js
+(@huggingface/transformers 4.3.1, ONNX Runtime Web). It is opt-in: about
+90 MB downloads once from Hugging Face and is cached; the image never
+leaves the device. On a test machine it took about 19 seconds the first time.
+
+15.9 Swappable model
+The server records the model name ("clip-vit-base-patch32-q8") with every
+embedding and only compares embeddings from the same model. Changing model
+means adding a new name to NIVRA_ALLOWED_EMBEDDING_MODELS - no rewrite.
+
+15.10 Classification rules
+exact = same SHA-256. high = pHash distance <= 6, OR pHash <= 12 with
+embedding cosine >= 0.95. possible = pHash <= 12, OR embedding cosine
+>= 0.92. Otherwise none. Thresholds are settings (NIVRA_PHASH_*,
+NIVRA_COSINE_*). Every result is a suggestion for human review.
+
+15.11 What testing taught us about CLIP (important)
+A DIFFERENT test image scored 0.95 cosine with the original - CLIP judges
+what an image is about, not whether it is the same picture. So an embedding
+alone can never make a match "high"; at most "possible". Results: resized
+copy = high, cropped copy = possible (pHash alone missed it), different
+image = possible (a false alarm that a human dismisses).
+
+15.12 Next step for the embedding (recommended)
+Evaluate on a real image-copy-detection benchmark (e.g. DISC21 or
+Copydays) and consider a model trained for copy detection, such as SSCD,
+instead of CLIP. The swappable design (15.9) exists for exactly this.
+
+15.13 Consent and the under-18 rule
+Before choosing an image the user confirms the person was 18+ when it was
+taken and that it is them or they are authorised. "No / not sure" routes to
+Take It Down, cybercrime.gov.in and 1930 and stops. The server also refuses
+registration without both confirmations and records the consent version.
+
+15.14 What the server stores per protected image
+A label the user chose (advised not to describe the image), status,
+consent version and time, and the fingerprints. Fingerprint values are
+never sent back to the browser. Removing protection deletes them; deleting
+the account deletes everything.
+
+15.15 Embeddings at rest
+Embeddings could leak some visual features (13.9), but app-level encryption
+would stop the database searching them. Decision: rely on encrypted storage
+at the database/disk level in production, strict per-account access, and
+deletion on revoke. Revisit if a vector database is introduced.
+
+15.16 Trauma-informed details
+The local preview is blurred by default with a "Show preview" button. The
+page states plainly what works today and that automatic web searching
+arrives in the next phase - no implied monitoring that doesn't exist yet.
+
+15.17 API added (backend/app/api/images.py)
+POST /api/images (register fingerprints), GET /api/images, PATCH
+/api/images/{id} (label, pause/resume), PUT /api/images/{id}/embedding (add
+the AI fingerprint later), DELETE /api/images/{id} (revoke), POST
+/api/images/check (compare a copy with your own images only).
+
+15.18 Tests (57 backend tests passing + TS vector check)
+Shared vectors, resize/JPEG/brightness robustness, different images far
+apart, transparency handling, classification rules incl. the CLIP cap,
+consent required, malformed fingerprints and smuggled image data rejected,
+duplicates, pause/resume, revoke, cross-account isolation, account deletion.
+
+15.19 Known limits after phase 3
+"Ready for monitoring" means fingerprints are saved; no automatic web
+search runs yet (phase 4). CLIP cannot reliably tell a cropped copy from a
+similar-looking different photo (15.11). Uvicorn's auto-reload did not
+detect file changes in this OneDrive folder - restart the backend manually
+after code changes.

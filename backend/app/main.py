@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import account, auth, cases
+from app.api import account, auth, cases, images
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -18,7 +18,7 @@ log = logging.getLogger("nivra")
 
 app = FastAPI(
     title="Nivra API",
-    version="0.2.0",
+    version="0.3.0",
     # Interactive docs are handy in development, but not exposed in production.
     docs_url=None if settings.is_production else "/api/docs",
     redoc_url=None,
@@ -69,3 +69,4 @@ def health() -> dict[str, str]:
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(cases.router)
+app.include_router(images.router)

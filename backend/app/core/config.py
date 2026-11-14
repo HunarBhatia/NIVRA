@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     max_links_per_request: int = 50
     max_links_per_case: int = 200
     max_cases_per_account: int = 20
+    max_protected_images_per_account: int = 100
+
+    # Match thresholds (section 13.12). Suggestions for human review only.
+    phash_high_distance: int = 6  # Hamming distance out of 64 bits
+    phash_possible_distance: int = 12
+    # Embedding (CLIP) alone never makes a "high" match - see compare.py.
+    cosine_high: float = 0.95  # lifts a near pHash (<= possible) to "high"
+    cosine_possible: float = 0.92  # alone: at most "possible"
+
+    # Embedding models the server accepts (must match the browser's model).
+    allowed_embedding_models: list[str] = ["clip-vit-base-patch32-q8"]
+    embedding_dims: int = 512
 
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True

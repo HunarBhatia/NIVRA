@@ -1,9 +1,10 @@
 """Validated request/response shapes. Anything not listed here is rejected."""
 
+import math
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
 Category = Literal["intimate", "morphed", "impersonation"]
 LinkStatus = Literal["found", "reported", "removed", "rejected", "escalated", "reappeared"]
@@ -101,3 +102,89 @@ class StatusChangeIn(Strict):
 
 class RegisterOut(BaseModel):
     account_code: str
+
+
+# ---------- Protected images & fingerprints (phase 3) ----------
+
+Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+PhashHex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{16}$")]
+
+# Bumped whenever the consent wording on the website changes.
+CONSENT_VERSION = "2026-11-v1"
+
+
+class EmbeddingIn(Strict):
+    model: str = Field(max_length=48)
+    vector: list[float] = Field(min_length=16, max_length=2048)
+
+    @field_validator("vector")
+    @classmethod
+    def finite(cls, v: list[float]) -> list[float]:
+        if not all(math.isfinite(x) for x in v):
+            raise ValueError("vector must contain finite numbers")
+        return v
+
+
+class FingerprintsIn(Strict):
+    sha256: Sha256Hex
+    phash: PhashHex
+    phash_algorithm: Literal["phash-dct-v1"] = "phash-dct-v1"
+    embedding: EmbeddingIn | None = None
+
+
+class ConsentIn(Strict):
+    """Both must be true. The under-18 route never reaches this API: the
+    website sends those users to specialist services instead."""
+    subject_is_adult: bool
+    is_subject_or_authorised: bool
+
+
+class ProtectedImageCreateIn(Strict):
+    label: str = Field(default="", max_length=80)
+    consent: ConsentIn
+    consent_version: Literal["2026-11-v1"]
+    fingerprints: FingerprintsIn
+
+
+class ProtectedImageUpdateIn(Strict):
+    label: str | None = Field(default=None, max_length=80)
+    status: Literal["active", "paused"] | None = None
+
+
+class FingerprintOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    kind: Literal["sha256", "phash", "embedding"]
+    algorithm: str
+    created_at: datetime
+
+
+class ProtectedImageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    label: str
+    status: Literal["active", "paused"]
+    consent_version: str
+    created_at: datetime
+    fingerprints: list[FingerprintOut]
+
+
+class MatchCheckIn(Strict):
+    """Fingerprints of a copy the user wants checked against THEIR OWN
+    protected images (computed in their browser)."""
+    sha256: Sha256Hex
+    phash: PhashHex
+    embedding: EmbeddingIn | None = None
+
+
+class MatchResultOut(BaseModel):
+    image_id: str
+    label: str
+    classification: Literal["exact", "high", "possible", "none"]
+    sha256_equal: bool
+    phash_distance: int | None
+    cosine: float | None
+
+
+class MatchCheckOut(BaseModel):
+    results: list[MatchResultOut]
+    thresholds: dict[str, float]

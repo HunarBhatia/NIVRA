@@ -1,13 +1,15 @@
-"""Database tables for the backend foundation (phase 2).
+"""Database tables.
 
-Tables for protected images, fingerprints, discovery jobs, matches, evidence
-and complaints are added by later phases with their own migrations, so
-each lands with the code that uses it (PROJECT_DETAILS.txt 13.21).
+Phase 2: users, sessions, cases, links, status events, audit events.
+Phase 3: protected images and their fingerprints (never the images: D13).
+Discovery jobs, matches, evidence and complaints are added by later phases
+with their own migrations, so each lands with the code that uses it
+(PROJECT_DETAILS.txt 13.21).
 """
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -36,6 +38,58 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True,
         order_by="Case.created_at",
     )
+    protected_images: Mapped[list["ProtectedImage"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="ProtectedImage.created_at",
+    )
+
+
+class ProtectedImage(Base):
+    """An image the user asked Nivra to watch for. Holds NO image data: only
+    a label the user chose, consent records and monitoring status. The
+    fingerprints live in `fingerprints` (D13: computed on the device)."""
+
+    __tablename__ = "protected_images"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(80), default="")
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active | paused
+    # What the user confirmed, and which wording of the consent text they saw.
+    consent_version: Mapped[str] = mapped_column(String(16))
+    consented_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    user: Mapped[User] = relationship(back_populates="protected_images")
+    fingerprints: Mapped[list["Fingerprint"]] = relationship(
+        back_populates="image", cascade="all, delete-orphan", passive_deletes=True,
+    )
+
+
+class Fingerprint(Base):
+    """One fingerprint of a protected image.
+
+    kind = sha256 | phash | embedding; `algorithm` names the exact method
+    (e.g. phash-dct-v1, clip-vit-base-patch32-q8) so methods can be replaced
+    later without mixing incompatible values. Hashes go in `value`;
+    embeddings go in `vector` (JSON now; a pgvector column in production).
+    """
+
+    __tablename__ = "fingerprints"
+    __table_args__ = (UniqueConstraint("image_id", "kind", name="uq_fingerprint_image_kind"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    image_id: Mapped[str] = mapped_column(
+        ForeignKey("protected_images.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))
+    algorithm: Mapped[str] = mapped_column(String(48))
+    value: Mapped[str | None] = mapped_column(String(128), default=None, index=True)
+    vector: Mapped[list[float] | None] = mapped_column(JSON, default=None)
+    dims: Mapped[int | None] = mapped_column(Integer, default=None)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    image: Mapped[ProtectedImage] = relationship(back_populates="fingerprints")
 
 
 class UserSession(Base):
