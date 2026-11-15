@@ -66,24 +66,28 @@ def create(db: Session, user_id: str, *, kind: str, title: str, body: str, href:
 # ---------------- Email ----------------
 
 class EmailSender(Protocol):
-    def send(self, to: str, subject: str, body: str) -> None: ...
+    def send(self, to: str, subject: str, body: str, reply_to: str | None = None) -> None: ...
 
 
 class ConsoleSender:
     """Development: records that an email would be sent (never the address)."""
 
     sent: list[tuple[str, str, str]] = []
+    reply_tos: list[str | None] = []
 
-    def send(self, to: str, subject: str, body: str) -> None:
+    def send(self, to: str, subject: str, body: str, reply_to: str | None = None) -> None:
         ConsoleSender.sent.append((to, subject, body))
+        ConsoleSender.reply_tos.append(reply_to)
         log.info("Email would be sent (console mode)")
 
 
 class SMTPSender:
-    def send(self, to: str, subject: str, body: str) -> None:
+    def send(self, to: str, subject: str, body: str, reply_to: str | None = None) -> None:
         s = get_settings()
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = s.smtp_from, to, subject
+        if reply_to:
+            msg["Reply-To"] = reply_to
         msg.set_content(body)
         with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=20) as server:
             server.starttls()

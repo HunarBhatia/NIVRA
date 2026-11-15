@@ -40,6 +40,27 @@ def fingerprint_candidate(data: bytes) -> CandidatePrints | None:
         return None
 
 
+def compare_all(
+    db: Session, user_id: str, prints: CandidatePrints, t: Thresholds
+) -> list[tuple[ProtectedImage, Comparison]]:
+    """Comparison with EVERY active protected image (for the scan view)."""
+    images = db.scalars(
+        select(ProtectedImage)
+        .where(ProtectedImage.user_id == user_id, ProtectedImage.status == "active")
+        .options(selectinload(ProtectedImage.fingerprints))
+    ).all()
+    out = []
+    for image in images:
+        fps = {f.kind: f for f in image.fingerprints}
+        sha, ph = fps.get("sha256"), fps.get("phash")
+        out.append((image, compare(
+            sha_a=sha.value if sha else None, sha_b=prints.sha256,
+            phash_a=ph.value if ph else None, phash_b=prints.phash,
+            emb_a=None, emb_b=None, t=t,
+        )))
+    return out
+
+
 def match_candidate(
     db: Session, user_id: str, prints: CandidatePrints, t: Thresholds
 ) -> list[tuple[ProtectedImage, Comparison]]:

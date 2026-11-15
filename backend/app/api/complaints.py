@@ -1,6 +1,6 @@
 """Complaints, case timelines, the account overview and the platform directory."""
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -22,7 +22,9 @@ from app.models import (
     ProtectedImage,
     User,
 )
-from app.services import audit
+from app.core.config import get_settings
+from app.core.security import decrypt_field
+from app.services import audit, notify, sending
 from app.services import complaints as svc
 
 router = APIRouter(prefix="/api", tags=["complaints"])
@@ -112,6 +114,61 @@ def complaint_status(complaint_id: str, body: ComplaintStatusIn, user: CurrentUs
     return _complaint_out(db, c)
 
 
+# ---------------- Automatic sending (section 22.6) ----------------
+
+SENDS_PER_DAY = 30
+
+
+@router.get("/links/{link_id}/recipients")
+def link_recipients(link_id: str, user: CurrentUser, db: DB) -> dict[str, Any]:
+    """Where Nivra would email a notice for this link (shown before sending)."""
+    link = _own_link(db, user, link_id)
+    return sending.recipients_for(link.host)
+
+
+@router.post("/complaints/{complaint_id}/send")
+def send_complaint(complaint_id: str, user: CurrentUser, db: DB) -> dict[str, Any]:
+    """Emails an APPROVED complaint to every email channel for its link.
+    The user's approval is the go-ahead; nothing is sent before it."""
+    c = _own_complaint(db, user, complaint_id)
+    if c.status != "user_approved":
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Only an approved notice that hasn't been sent can be sent.")
+    since = datetime.now(UTC) - timedelta(days=1)
+    sent_today = db.scalar(select(func.count(Complaint.id)).where(
+        Complaint.user_id == user.id, Complaint.status == "sent_by_nivra",
+        Complaint.submitted_at > since)) or 0
+    if sent_today >= SENDS_PER_DAY:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                            "You've sent a lot of notices today. Please try again tomorrow.")
+    link = db.get(CaseLink, c.link_id)
+    where = sending.recipients_for(link.host)
+    if where["form_only"]:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"{where['platform']} only accepts reports through its own form, "
+                            "so Nivra can't email it. Open the form and paste the notice.")
+    if not where["emails"]:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Nivra couldn't find an email contact for this site or its host. "
+                            "Look for a contact or abuse page on the site.")
+    out = _complaint_out(db, c)  # filled-in subject/body
+    reply_to = decrypt_field(user.email_encrypted) if user.email_encrypted else None
+    try:
+        for r in where["emails"]:
+            notify.sender().send(r["address"], out["subject"], out["body"], reply_to=reply_to)
+    except Exception:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY,
+                            "The email couldn't be sent. Please try again later.") from None
+    to = ", ".join(r["address"] for r in where["emails"])
+    dev = get_settings().email_backend == "console"
+    svc.transition(db, c, "sent_by_nivra", channel_kind="email", channel_label=to[:120],
+                   note=f"Sent by Nivra to {to}" + (" (development: logged, not delivered)" if dev else ""))
+    audit.record(db, "complaint.sent_by_nivra", user.id, "complaint", c.id)
+    db.commit()
+    return {**_complaint_out(db, c), "sent_to": [r["address"] for r in where["emails"]],
+            "delivered": not dev, "replies_to_you": bool(reply_to)}
+
+
 # ---------------- Case timeline ----------------
 
 @router.get("/cases/{case_id}/timeline")
@@ -172,9 +229,10 @@ def overview(user: CurrentUser, db: DB) -> dict[str, Any]:
         "confirmed_incidents": len(cases),
         "drafts": complaint_counts.get("draft_generated", 0) + complaint_counts.get("user_approved", 0),
         "submitted": sum(complaint_counts.get(s, 0) for s in
-                         ("submitted_by_user", "submission_confirmed", "response_received",
-                          "resolved", "rejected")),
+                         ("submitted_by_user", "sent_by_nivra", "submission_confirmed",
+                          "response_received", "resolved", "rejected")),
         "pending_responses": complaint_counts.get("submitted_by_user", 0)
+        + complaint_counts.get("sent_by_nivra", 0)
         + complaint_counts.get("submission_confirmed", 0),
         "resolved": complaint_counts.get("resolved", 0),
         "links_removed": link_counts.get("removed", 0),

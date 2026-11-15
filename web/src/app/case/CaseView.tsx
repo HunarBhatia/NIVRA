@@ -5,7 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import AccountGate from "@/components/AccountGate";
 import { FollowUpAssistant, NoticeAssistant } from "@/components/Assistant";
 import CaseTimeline from "@/components/CaseTimeline";
-import ComplaintTracker, { COMPLAINTS_CHANGED, announceComplaintsChanged } from "@/components/ComplaintTracker";
+import ComplaintTracker, {
+  COMPLAINTS_CHANGED,
+  announceComplaintsChanged,
+  approveForSending,
+} from "@/components/ComplaintTracker";
 import EvidenceLocker from "@/components/EvidenceLocker";
 import WatchToggle from "@/components/WatchToggle";
 import * as api from "@/lib/api";
@@ -572,6 +576,7 @@ function LinkRow({
                 onClick={async () => {
                   setBusy(true);
                   try {
+                    approveForSending(link.id);
                     await api.createComplaint(link.id, notice.subject, notice.body);
                     announceComplaintsChanged();
                   } catch (err) {
@@ -580,9 +585,9 @@ function LinkRow({
                     setBusy(false);
                   }
                 }}
-                title="Start tracking this notice as a complaint"
+                title="Approve this notice: Nivra emails it where it can and tracks it"
               >
-                Use this notice
+                Approve &amp; send
               </button>
             </div>
             <NoticeAssistant caseId={c.id} linkId={link.id} platformName={platform?.name} />

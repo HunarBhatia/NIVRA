@@ -23,8 +23,10 @@ from app.services.links import can_transition
 
 TRANSITIONS: dict[str, set[str]] = {
     "draft_generated": {"user_approved", "discarded"},
-    "user_approved": {"submitted_by_user", "discarded"},
+    "user_approved": {"submitted_by_user", "sent_by_nivra", "discarded"},
     "submitted_by_user": {"submission_confirmed", "response_received", "resolved", "rejected"},
+    # Nivra emailed it after the user's approval (section 22.6).
+    "sent_by_nivra": {"submission_confirmed", "response_received", "resolved", "rejected"},
     "submission_confirmed": {"response_received", "resolved", "rejected"},
     "response_received": {"resolved", "rejected"},
     "resolved": set(),
@@ -36,6 +38,7 @@ LABEL = {
     "draft_generated": "Draft generated",
     "user_approved": "Approved by you",
     "submitted_by_user": "Submitted by you",
+    "sent_by_nivra": "Sent by Nivra",
     "submission_confirmed": "Submission confirmed",
     "response_received": "Response received",
     "resolved": "Removed / resolved",
@@ -44,7 +47,8 @@ LABEL = {
 }
 
 # What a complaint step means for the link's own status (blueprint 10.5).
-LINK_EFFECT = {"submitted_by_user": "reported", "resolved": "removed", "rejected": "rejected"}
+LINK_EFFECT = {"submitted_by_user": "reported", "sent_by_nivra": "reported", "resolved": "removed",
+               "rejected": "rejected"}
 
 
 class ComplaintTransitionError(ValueError):
@@ -75,7 +79,7 @@ def transition(db: Session, c: Complaint, new: str, *, note: str | None = None,
         c.reference = reference.strip()[:120]
     if channel_kind:
         c.channel_kind, c.channel_label = channel_kind, (channel_label or "")[:120] or None
-    if new == "submitted_by_user":
+    if new in ("submitted_by_user", "sent_by_nivra"):
         c.submitted_at = now
     if new in ("resolved", "rejected"):
         c.resolved_at = now

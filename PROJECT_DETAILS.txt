@@ -1697,3 +1697,136 @@ D28 [DECIDED 2026-11-15] Dependencies are audited (pip-audit, npm audit,
 D29 [DECIDED 2026-11-15] Deployment is four containers (PostgreSQL, API,
     exactly one worker, website) behind a TLS reverse proxy; the API
     refuses to start with unsafe production settings.
+
+========================================================================
+22. THE "MIDNIGHT" REDESIGN, PHOTO-FIRST CASES, LIVE SCANS, AUTO-SEND
+========================================================================
+
+22.1 Why this phase happened
+After Phase 8 the owner tried the site as a user and judged it generic:
+pale colours, text-heavy, "chatbot-like". Three real gaps came out of it:
+Start a case never asked for the photo, the impressive part (scanning
+pages and matching fingerprints) was invisible, and sending was manual.
+
+22.2 Design system: "Midnight" (web/src/app/globals.css)
+Chosen by the owner: dark and cinematic. Near-black blue background
+(#05070d), glass-like surfaces, luminous teal (#3ef0c8) and violet
+(#8a7dff) accents, coral (#ff8a70) for warnings and matches. Fonts: Syne
+(headings), Manrope (text), JetBrains Mono (fingerprints and hashes).
+
+22.3 Every old class name was kept
+All pages are built from shared classes (btn, well, field, badge, rows...).
+The stylesheet was rewritten but those names kept, so every page took the
+new look at once without touching its code. New classes were added for
+the landing, the scan view and the photo dropzone.
+
+22.4 Motion libraries, and the rules for them
+GSAP (scroll reveals, page transitions, backdrop drift), Three.js (the hero
+fingerprint), anime.js (bit grids, counters). Every animation stops under
+prefers-reduced-motion, and content is visible without JavaScript: scripts
+only animate FROM hidden, never hide by default. The page transition is a
+short fade (a blur version lingered on slow frames and was dropped).
+
+22.5 The landing hero: a fingerprint made of light
+components/motion/FingerprintHero.tsx draws about 14,000 points as
+fingerprint ridges, with a scan wave passing through them - a picture of
+what Nivra does. It pauses off-screen, falls back to nothing without WebGL,
+and renders one still frame for reduced motion. Below it: the 4-step
+pipeline with real-looking bit grids, a feature grid and the privacy facts.
+
+22.6 Photo step in Start a case (app/start/StartWizard.tsx)
+New step 3: "Add the photo". It is fingerprinted on the device (same code
+as Protect), the person confirms they are the subject or authorised (the
+under-18 question already came first), and only fingerprints are sent.
+"I don't have it" skips it; the old link-only flow still works.
+
+22.7 Links are checked automatically
+With a photo, the links step offers "Check these pages now" (on by default)
+and "Keep watching them" (off by default). Saving registers the photo,
+creates the case, starts a discovery job per link and optional watches. A
+link that can't be checked is listed with the reason; it doesn't fail.
+
+22.8 The live scan view (components/scan/ScanView.tsx)
+Shows a scan as it happens: stages (opening the page, fingerprinting,
+done) and one card per image with "your photo" vs "found here" bit grids,
+differing bits in coral, a similarity bar and the verdict. Used on the
+Start "done" screen, on Protect, and by the demo.
+
+22.9 Where the scan data comes from (scan_log)
+DiscoveryJob gained `stage` and `scan_log` (migration a7cec631ef6d). The
+worker appends one entry per image: its URL, its pHash, the result, the
+distance and the XOR "diff" against the closest protected photo, and
+commits after each one so the browser can poll every second.
+
+22.10 Real scans never show the found images
+The scan view loads no third-party images: that would reveal the user's
+visit to the site and could show them the abusive image again. Only
+hashes, host names and file names are shown. Only the demo shows pictures,
+because they are Nivra's own sample images.
+
+22.11 The demo (/demo, app/demo/DemoView.tsx)
+Runs the REAL fingerprint code in the browser. Candidates are the protected
+photo plus four edits made on a canvas (cropped, filtered, shrunk and
+recompressed, captioned) and three unrelated samples. Edits match,
+unrelated photos don't. "Try my own photo" does the same with the
+visitor's photo, which never leaves the device.
+
+22.12 Demo sample images
+web/public/demo/*.jpg are procedurally drawn scenes (lake, city, forest,
+sea): no people and no real photos, so nothing sensitive is shipped and
+there are no rights issues. The demo uses the backend's thresholds (6 and
+12 bits).
+
+22.13 Automatic sending: one approval, then it sends
+Chosen by the owner. "Approve & send" (on the template and on the
+assistant's draft) approves the notice and immediately emails it - no
+second click. Nothing is ever sent without that approval. New complaint
+status: sent_by_nivra ("Sent by Nivra"), which marks the link as reported.
+
+22.14 Who the notice goes to (backend/app/services/sending.py)
+Platforms in shared/platforms.json: their listed email channels. Sites
+not in the directory: the abuse contact of the company hosting the site,
+found through RDAP (rdap.org, the public registry that replaced WHOIS).
+Only the site's IP address is sent to rdap.org, and lookups are cached.
+
+22.15 Platforms that only take their own form
+Instagram, TikTok, X and others accept reports only through their own
+forms, which no outside service may fill in automatically. For those,
+Nivra copies the notice and opens the form; the person pastes it and marks
+it submitted. This is a platform limit, not a missing feature.
+
+22.16 Replies and limits
+The sent email's Reply-To is the person's own email if they saved one, so
+platforms answer them directly; otherwise Nivra's address is used. At most
+30 sends per account per day. In development (email backend "console")
+the send is logged, not delivered, and the history says so.
+
+22.17 Phones keep Quick exit on screen
+At phone width the header drops the wordmark text and the word "Updates"
+(its count and label stay for screen readers) so Quick exit is always
+visible: it is a safety control, not decoration.
+
+22.18 Verified
+Backend: 177 tests pass (new: 8 for sending, 1 for the scan log; one
+lifecycle test updated for the new status). Web: unit tests, pHash
+vectors, tsc and eslint pass. In the browser: landing, demo scan, Start
+with photo -> live scan (a blocked site reported clearly), a real scan of
+a public image, and Approve & send finding abuse@wikimedia.org via RDAP.
+
+22.19 Not verified
+Real email delivery to a platform (needs SMTP and a real case). The
+scanner only works on public pages that allow automated visits; many big
+sites (Wikipedia included) refuse, and those links are reported manually.
+
+D30 [DECIDED 2026-11-15] Dark "Midnight" design with GSAP, Three.js and
+    anime.js; all motion respects reduced-motion and content never depends
+    on JavaScript to be visible.
+D31 [DECIDED 2026-11-15] One approval, then Nivra emails the notice
+    itself (platform channels, else the host's RDAP abuse contact);
+    form-only platforms get copy-and-open instead.
+D32 [DECIDED 2026-11-15] Start a case asks for the photo (fingerprinted on
+    the device) and checks the links for it automatically; skipping it is
+    allowed.
+D33 [DECIDED 2026-11-15] Scans are shown live from a per-image scan log;
+    real scans show only hashes, never the found images. A /demo runs the
+    real matching on sample images in the browser.

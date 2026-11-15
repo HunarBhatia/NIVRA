@@ -1,14 +1,8 @@
 import Link from "next/link";
+import Logo from "./Logo";
+import NavLinks from "./NavLinks";
 import QuickExit from "./QuickExit";
 import UpdatesLink from "./UpdatesLink";
-
-const NAV = [
-  { href: "/start", label: "Start a case" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/protect", label: "Protect images" },
-  { href: "/guides", label: "Platform guides" },
-  { href: "/help", label: "Get help now" },
-];
 
 export default function SiteHeader() {
   return (
@@ -17,24 +11,17 @@ export default function SiteHeader() {
         Prototype: please use test details only. Press Esc twice to leave quickly.
       </p>
       <div className="container site-header__row">
-        <Link href="/" className="wordmark">
-          Nivra
+        <Link href="/" className="wordmark" aria-label="Nivra home">
+          <Logo />
+          <span>Nivra</span>
         </Link>
         <nav className="nav" aria-label="Main">
-          {NAV.map((n) => (
-            <Link key={n.href} href={n.href}>
-              {n.label}
-            </Link>
-          ))}
+          <NavLinks />
         </nav>
         <details className="menu">
           <summary>Menu</summary>
           <div className="menu__panel">
-            {NAV.map((n) => (
-              <Link key={n.href} href={n.href}>
-                {n.label}
-              </Link>
-            ))}
+            <NavLinks />
           </div>
         </details>
         <UpdatesLink />

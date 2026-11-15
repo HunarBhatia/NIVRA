@@ -201,6 +201,10 @@ class DiscoveryJob(Base):
     candidates_skipped: Mapped[int] = mapped_column(Integer, default=0)
     matches_found: Mapped[int] = mapped_column(Integer, default=0)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # Live progress for the scan view (section 22.4): fetching|scanning|done|failed,
+    # and one entry per image checked (fingerprint + comparison, never the image).
+    stage: Mapped[str] = mapped_column(String(16), default="queued")
+    scan_log: Mapped[list | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     finished_at: Mapped[datetime | None] = mapped_column(default=None)

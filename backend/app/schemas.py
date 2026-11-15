@@ -210,6 +210,8 @@ class DiscoveryJobOut(BaseModel):
     matches_found: int
     created_at: datetime
     finished_at: datetime | None
+    stage: str = "queued"
+    scan_log: list[dict] | None = None
 
 
 class MatchOut(BaseModel):

@@ -346,3 +346,17 @@ def test_candidate_bytes_never_stored(user_client: TestClient):
             for value in vars(m).values():
                 assert not isinstance(value, (bytes, bytearray))
     assert BytesIO  # (imports used)
+
+
+def test_scan_log_records_each_image_without_storing_it(user_client: TestClient):
+    protect(user_client)
+    jid = user_client.post("/api/discovery/jobs", json={"url": "https://site.test/thread"}).json()["id"]
+    run(jid)
+    job = user_client.get(f"/api/discovery/jobs/{jid}").json()
+    assert job["stage"] == "done"
+    log = {e["url"]: e for e in job["scan_log"]}
+    exact = log["https://site.test/1.png"]
+    assert exact["result"] == "exact" and exact["diff"] == "0" * 16 and len(exact["phash"]) == 16
+    assert log["https://cdn.test/2.jpg"]["result"] == "high"
+    assert log["https://site.test/3.png"]["result"] == "none"
+    assert log["https://site.test/3.png"]["distance"] > 12

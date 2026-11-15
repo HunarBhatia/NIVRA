@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.api.images import thresholds
 from app.discovery.fetch import FetchError, SafeFetcher
-from app.discovery.matching import fingerprint_candidate, match_candidate
+from app.discovery.matching import compare_all, fingerprint_candidate
+
 from app.discovery.providers import PROVIDERS, DiscoveryProvider, DiscoveryReport
 from app.models import DiscoveredMatch, DiscoveryJob
 from app.services import audit
@@ -29,22 +30,46 @@ def process_job(
     providers = providers or PROVIDERS
     fetcher = fetcher or SafeFetcher()
     job.status = "running"
+    job.stage = "fetching"
+    job.scan_log = []
     job.attempts += 1
     job.started_at = datetime.now(UTC)
     db.commit()
+    log_entries: list[dict] = []
 
     report = DiscoveryReport()
     t = thresholds()
     try:
         provider = providers[job.provider]
         for cand in provider.discover(job.input_url, fetcher, report):
+            job.stage = "scanning"
+            job.candidates_found = report.found
             prints = fingerprint_candidate(cand.data)
             cand.data = b""  # drop the image bytes immediately
             if prints is None:
                 report.skipped += 1
+                log_entries.append({"i": len(log_entries) + 1, "url": cand.image_url[:300],
+                                    "result": "unreadable"})
+                job.scan_log = list(log_entries)
+                db.commit()
                 continue
             job.candidates_checked += 1
-            for image, c in match_candidate(db, job.user_id, prints, t):
+            comparisons = compare_all(db, job.user_id, prints, t)
+            best = min(comparisons, key=lambda ic: (
+                {"exact": 0, "high": 1, "possible": 2, "none": 3}[ic[1].classification],
+                ic[1].phash_distance if ic[1].phash_distance is not None else 64), default=None)
+            entry = {"i": len(log_entries) + 1, "url": cand.image_url[:300], "phash": prints.phash,
+                     "result": best[1].classification if best else "none"}
+            if best:
+                ph = next((f.value for f in best[0].fingerprints if f.kind == "phash"), None)
+                entry.update(distance=best[1].phash_distance, exact=best[1].sha256_equal,
+                             label=best[0].label,
+                             # Which of the 64 bits differ (the owner's own data).
+                             diff=f"{int(ph, 16) ^ int(prints.phash, 16):016x}" if ph else None)
+            log_entries.append(entry)
+            job.scan_log = list(log_entries)
+            hits = [(image, c) for image, c in comparisons if c.classification != "none"]
+            for image, c in hits:
                 existing = db.scalar(select(DiscoveredMatch).where(
                     DiscoveredMatch.image_id == image.id,
                     DiscoveredMatch.candidate_image_url == cand.image_url))
@@ -63,13 +88,17 @@ def process_job(
                         cosine=c.cosine,
                     ))
                 job.matches_found += 1
+            db.commit()  # make progress visible to the live scan view
         job.status = "done"
+        job.stage = "done"
     except FetchError as e:
         job.status, job.error_code, job.error_message = "failed", e.code, e.message
     except Exception as e:  # never leak details (or URLs) into logs or the UI
         log.error("Discovery job failed with %s", type(e).__name__)
         job.status, job.error_code = "failed", "internal"
         job.error_message = "Something went wrong while checking that page."
+    if job.status == "failed":
+        job.stage = "failed"
     job.page_title = report.page_title
     job.candidates_found = report.found
     job.candidates_skipped = report.skipped

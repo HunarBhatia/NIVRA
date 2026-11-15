@@ -24,6 +24,8 @@ import type {
   MatchCheck,
   NivraCase,
   ProtectedImage,
+  Recipients,
+  SentComplaint,
 } from "./types";
 
 // Client for the Nivra backend (backend/app). Every call goes to /api/*,
@@ -298,3 +300,11 @@ export const updateNotificationPrefs = (patch: Partial<NotificationPrefs>) =>
 
 export const setEmail = (email: string | null) =>
   call<Account>("/account", json("PATCH", { email }));
+
+// ---------- Sending (section 22.6) ----------
+
+export const getRecipients = (linkId: string) =>
+  call<Recipients>(`/links/${encodeURIComponent(linkId)}/recipients`);
+
+export const sendComplaint = (id: string) =>
+  call<SentComplaint>(`/complaints/${encodeURIComponent(id)}/send`, json("POST"));

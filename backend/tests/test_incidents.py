@@ -75,7 +75,7 @@ def test_complaint_lifecycle_updates_the_link(user_client: TestClient):
     comp = template_complaint(user_client, link_id)
     assert comp["status"] == "user_approved" and comp["platform_name"] == "Instagram"
     assert URL in comp["body"] and "Priya Test" in comp["body"]  # placeholders filled
-    assert comp["next_statuses"] == ["submitted_by_user", "discarded"]
+    assert comp["next_statuses"] == ["submitted_by_user", "sent_by_nivra", "discarded"]
 
     r = move(user_client, comp["id"], "submitted_by_user", channel_kind="in-app",
              channel_label="Report inside the Instagram app")

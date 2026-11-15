@@ -30,7 +30,7 @@ export default function UpdatesLink() {
   if (count === null) return null;
   return (
     <Link href="/notifications" className="updates-link" aria-label={`Updates, ${count} unread`}>
-      Updates{count > 0 && <span className="updates-count num">{count}</span>}
+      <span className="updates-text">Updates</span>{count > 0 && <span className="updates-count num">{count}</span>}
     </Link>
   );
 }

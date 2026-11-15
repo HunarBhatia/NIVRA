@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { MatchExplainer, RecheckPlanner } from "@/components/Assistant";
+import ScanView from "@/components/scan/ScanView";
+import { jobCards } from "@/components/scan/LiveScan";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { CATEGORY_LABEL } from "@/lib/notices";
@@ -65,11 +67,11 @@ export default function DiscoveryPanel({ onMatchesChanged }: { onMatchesChanged?
     refresh().catch((e) => setError(errorText(e)));
   }, [refresh]);
 
-  // While any job is queued or running, check again every 2 seconds.
+  // While any job is queued or running, check again every second (live scan view).
   const active = jobs.some((j) => j.status === "queued" || j.status === "running");
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => refresh().catch(() => {}), 2000);
+    const t = setInterval(() => refresh().catch(() => {}), 1000);
     return () => clearInterval(t);
   }, [active, refresh]);
 
@@ -133,11 +135,21 @@ export default function DiscoveryPanel({ onMatchesChanged }: { onMatchesChanged?
 
         <RecheckPlanner onQueued={() => refresh().catch(() => {})} />
 
-        {jobs.length > 0 && (
+        {jobs[0] && (
+          <ScanView
+            key={jobs[0].id}
+            stage={jobs[0].stage ?? (jobs[0].status === "running" ? "scanning" : jobs[0].status)}
+            title={jobs[0].page_title ? `${jobs[0].page_title} (${jobs[0].input_url})` : jobs[0].input_url}
+            cards={jobCards(jobs[0])}
+            error={jobs[0].status === "failed" ? jobs[0].error_message : null}
+          />
+        )}
+
+        {jobs.length > 1 && (
           <div>
-            <h3 style={{ marginBottom: "var(--space-xs)" }}>Recent checks</h3>
+            <h3 style={{ marginBottom: "var(--space-xs)" }}>Earlier checks</h3>
             <ul className="rows" aria-live="polite">
-              {jobs.slice(0, 5).map((j) => (
+              {jobs.slice(1, 6).map((j) => (
                 <li key={j.id}>
                   <h3 className="small" style={{ fontSize: "var(--text-base)" }}>
                     {j.page_title ?? shortUrl(j.input_url)}

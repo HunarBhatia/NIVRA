@@ -3,15 +3,26 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, createCase, getMe, register } from "@/lib/api";
+import {
+  ApiError,
+  addWatch,
+  createCase,
+  createDiscoveryJob,
+  getMe,
+  register,
+  registerImage,
+} from "@/lib/api";
+import BitGrid from "@/components/motion/BitGrid";
+import LiveScan from "@/components/scan/LiveScan";
+import { UnreadableImage, fingerprintFile, type Fingerprints } from "@/lib/fingerprint";
 import { CATEGORY_LABEL } from "@/lib/notices";
 import { TAKE_IT_DOWN_URL, normaliseUrl, resolvePlatform, splitLinks } from "@/lib/platforms";
 import type { Account, Category } from "@/lib/types";
 
 // The "Start a case" wizard (blueprint 10.2). One decision per screen.
 
-type Step = "safety" | "minor" | "what" | "links" | "evidence" | "save" | "done";
-const ORDER: Step[] = ["safety", "what", "links", "evidence", "save", "done"];
+type Step = "safety" | "minor" | "what" | "photo" | "links" | "evidence" | "save" | "done";
+const ORDER: Step[] = ["safety", "what", "photo", "links", "evidence", "save", "done"];
 
 const CATEGORY_HINT: Record<Category, string> = {
   intimate: "A real photo or video of you, shared without your consent.",
@@ -48,6 +59,17 @@ export default function StartWizard() {
   // Already logged in? Then the new case is added to that account and the
   // passphrase step is skipped.
   const [account, setAccount] = useState<Account | null>(null);
+  // Photo step (section 22.4): fingerprinted HERE, the file never leaves.
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [prints, setPrints] = useState<Fingerprints | null>(null);
+  const [fpBusy, setFpBusy] = useState(false);
+  const [authorised, setAuthorised] = useState(false);
+  const [over, setOver] = useState(false);
+  const [checkNow, setCheckNow] = useState(true);
+  const [watch, setWatch] = useState(false);
+  const [jobIds, setJobIds] = useState<string[]>([]);
+  const [scanNotes, setScanNotes] = useState<string[]>([]);
 
   useEffect(() => {
     getMe()
@@ -78,6 +100,36 @@ export default function StartWizard() {
 
   function nextFromWhat() {
     if (!category) return setError("Please choose what happened.");
+    go("photo");
+  }
+
+  async function choosePhoto(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return setError("Please choose an image file.");
+    setError("");
+    setPrints(null);
+    setReveal(false);
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhotoUrl(URL.createObjectURL(file));
+    setFpBusy(true);
+    try {
+      setPrints(await fingerprintFile(file, { embedding: false }));
+    } catch (e) {
+      setError(e instanceof UnreadableImage ? "That image couldn't be read. Try a JPG or PNG." : "Couldn't fingerprint that image.");
+    } finally {
+      setFpBusy(false);
+    }
+  }
+
+  function nextFromPhoto() {
+    if (prints && !authorised) return setError("Please confirm you are the person in the photo or are acting for them.");
+    go("links");
+  }
+
+  function skipPhoto() {
+    setPrints(null);
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhotoUrl("");
     go("links");
   }
 
@@ -99,12 +151,38 @@ export default function StartWizard() {
         setPass1("");
         setPass2("");
       }
+      if (prints) {
+        try {
+          await registerImage({ label: "Photo from my case", fingerprints: prints });
+        } catch (e) {
+          // Already protected (same photo added before) is fine.
+          if (!(e instanceof ApiError && e.status === 409)) throw e;
+        }
+      }
       await createCase({
         category: category as Category,
         self_taken: selfTaken === "yes" ? true : selfTaken === "no" ? false : null,
         display_name: displayName,
         urls: validUrls,
       });
+      // Check every link for the photo straight away, and optionally keep
+      // watching (section 22.4). A link that can't be checked is noted, not fatal.
+      const ids: string[] = [];
+      const notes: string[] = [];
+      for (const url of prints && checkNow ? validUrls : []) {
+        try {
+          ids.push((await createDiscoveryJob(url)).id);
+        } catch (e) {
+          notes.push(`${url}: ${e instanceof ApiError ? e.message : "couldn't be checked"}`);
+        }
+      }
+      for (const url of watch ? validUrls : []) {
+        try {
+          await addWatch({ url });
+        } catch {}
+      }
+      setJobIds(ids);
+      setScanNotes(notes);
       setNivraId(code);
       go("done");
     } catch (e) {
@@ -276,12 +354,88 @@ export default function StartWizard() {
         </section>
       )}
 
+      {step === "photo" && (
+        <section>
+          <h1>Add the photo</h1>
+          <p className="wizard__intro">
+            Nivra turns it into a 64-bit fingerprint on this device, then checks your links for it.
+            The photo itself is never uploaded.
+          </p>
+          <label
+            className="dropzone"
+            data-over={over}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setOver(true);
+            }}
+            onDragLeave={() => setOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setOver(false);
+              void choosePhoto(e.dataTransfer.files[0]);
+            }}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => void choosePhoto(e.target.files?.[0])}
+            />
+            <strong style={{ color: "var(--text)" }}>{photoUrl ? "Choose a different photo" : "Choose or drop the photo"}</strong>
+            <span className="small muted">JPG, PNG or WebP. Stays on this device.</span>
+          </label>
+
+          {photoUrl && (
+            <div className="preview-wrap" style={{ marginTop: "var(--space-lg)" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+              <img src={photoUrl} alt="The photo you chose" className="preview" data-reveal={reveal} />
+              <div className="stack" style={{ flex: 1, minWidth: "12rem" }}>
+                <button className="btn btn--small btn--ghost" onClick={() => setReveal((r) => !r)}>
+                  {reveal ? "Blur preview" : "Show preview"}
+                </button>
+                <div>
+                  <p className="label" style={{ marginBottom: 6 }}>
+                    {fpBusy ? "Fingerprinting..." : prints ? "Its fingerprint" : ""}
+                  </p>
+                  {prints && <BitGrid bits={prints.phash} />}
+                  {prints && <p className="hash" style={{ marginTop: 6 }}>{prints.phash}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {prints && (
+            <label className="check" style={{ marginTop: "var(--space-lg)" }}>
+              <input type="checkbox" checked={authorised} onChange={(e) => setAuthorised(e.target.checked)} />
+              <span className="small">
+                I am the person in this photo, or I&apos;m acting with their permission. Only its
+                fingerprint is stored, and I can delete it any time.
+              </span>
+            </label>
+          )}
+          {error && <p className="error" style={{ marginTop: "var(--space-md)" }}>{error}</p>}
+          <div className="wizard__nav">
+            <button className="btn btn--ghost" onClick={() => go("what")}>
+              Back
+            </button>
+            <div className="actions">
+              <button className="btn btn--ghost" onClick={skipPhoto}>
+                I don&apos;t have it
+              </button>
+              <button className="btn btn--primary" onClick={nextFromPhoto} disabled={!prints || fpBusy}>
+                Continue
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {step === "links" && (
         <section>
           <h1>Where is it?</h1>
           <p className="wizard__intro">
-            Paste each link on its own line. You can add more later. We only need the link, never
-            the image.
+            Paste each link on its own line. You can add more later. Nivra will check each one for
+            your photo.
           </p>
           <div className="field">
             <label htmlFor="links">Links</label>
@@ -338,9 +492,28 @@ export default function StartWizard() {
             </div>
           </details>
 
+          {prints && (
+            <div className="stack" style={{ marginTop: "var(--space-lg)" }}>
+              <label className="check">
+                <input type="checkbox" checked={checkNow} onChange={(e) => setCheckNow(e.target.checked)} />
+                <span className="small">
+                  <strong>Check these pages for my photo now.</strong> Nivra opens each page, reads
+                  every image and compares fingerprints. You&apos;ll watch it happen.
+                </span>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={watch} onChange={(e) => setWatch(e.target.checked)} />
+                <span className="small">
+                  <strong>Keep watching them.</strong> Re-check regularly and tell me if the photo
+                  comes back or a page goes down.
+                </span>
+              </label>
+            </div>
+          )}
+
           {error && <p className="error" style={{ marginTop: "var(--space-md)" }}>{error}</p>}
           <div className="wizard__nav">
-            <button className="btn btn--ghost" onClick={() => go("what")}>
+            <button className="btn btn--ghost" onClick={() => go("photo")}>
               Back
             </button>
             <button className="btn btn--primary" onClick={nextFromLinks}>
@@ -473,13 +646,38 @@ export default function StartWizard() {
               {copied ? "Copied" : "Copy Nivra ID"}
             </button>
           </div>
+          {jobIds.length > 0 && (
+            <div className="stack">
+              <h2>Checking your links now</h2>
+              <p className="small muted">
+                Each image on each page is fingerprinted and compared with yours. Matches wait for
+                you to confirm them on the Protect page.
+              </p>
+              <LiveScan jobIds={jobIds} />
+            </div>
+          )}
+          {scanNotes.length > 0 && (
+            <div className="well well--clay small">
+              Some links couldn&apos;t be checked automatically:
+              <ul className="timeline" style={{ marginTop: 6 }}>
+                {scanNotes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p>
-            Next, we&apos;ll show you a notice for each link and exactly where to send it.
+            Next, approve a notice for each link and Nivra sends it to the right place.
           </p>
           <div className="actions">
             <button className="btn btn--primary" onClick={() => router.push("/case")}>
               Go to my case
             </button>
+            {jobIds.length > 0 && (
+              <Link href="/protect" className="btn">
+                Review matches
+              </Link>
+            )}
           </div>
         </section>
       )}

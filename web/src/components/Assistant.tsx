@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import type { AgentRun, AgentStatus } from "@/lib/types";
+import { approveForSending } from "./ComplaintTracker";
 
 // Front ends for the four AI agents (phase 5, PROJECT_DETAILS.txt 17).
 // The assistant drafts, explains and plans. It never sends, submits or
@@ -102,8 +103,8 @@ export function NoticeAssistant({
           <p className="small">
             <strong>{run.status === "completed" ? "Approved by you." : "Waiting for your approval."}</strong>{" "}
             {run.status === "completed"
-              ? "Copy it and send it yourself, then mark the link as sent."
-              : "Nothing is sent. Approve it to keep it as your notice for this link."}
+              ? "Nivra sends it where it can. The complaint below shows where it went."
+              : "Nothing is sent until you approve. One click approves and sends it."}
           </p>
           {run.preview && (
             <>
@@ -121,9 +122,12 @@ export function NoticeAssistant({
                 <button
                   className="btn btn--primary btn--small"
                   disabled={busy}
-                  onClick={() => act(() => api.decideRun(run.id, "approve"))}
+                  onClick={() => {
+                    approveForSending(linkId);
+                    void act(() => api.decideRun(run.id, "approve"));
+                  }}
                 >
-                  Approve this notice
+                  Approve &amp; send
                 </button>
                 <button
                   className="btn btn--small"

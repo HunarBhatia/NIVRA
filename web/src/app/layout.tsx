@@ -1,26 +1,25 @@
-import type { Metadata } from "next";
-import { Hanken_Grotesk, Newsreader, Vollkorn } from "next/font/google";
-import SiteHeader from "@/components/SiteHeader";
+import type { Metadata, Viewport } from "next";
+import { JetBrains_Mono, Manrope, Syne } from "next/font/google";
 import SiteFooter from "@/components/SiteFooter";
+import SiteHeader from "@/components/SiteHeader";
+import Backdrop from "@/components/motion/Backdrop";
 import "./globals.css";
 
-// Fonts for the "Garden" look: Vollkorn headings, Hanken Grotesk body,
-// Newsreader for small captions. See PROJECT_DETAILS.txt section 9.
-const vollkorn = Vollkorn({ variable: "--font-vollkorn", subsets: ["latin"], weight: "600" });
-const hanken = Hanken_Grotesk({
-  variable: "--font-hanken",
-  subsets: ["latin"],
-  weight: ["400", "500"],
-});
-const newsreader = Newsreader({ variable: "--font-newsreader", subsets: ["latin"], weight: "400" });
+// "Midnight" design (section 22.2): Syne for display, Manrope for reading,
+// JetBrains Mono for fingerprints and hashes.
+const syne = Syne({ variable: "--font-syne", subsets: ["latin"], weight: ["600", "700", "800"] });
+const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
+const mono = JetBrains_Mono({ variable: "--font-jbmono", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
   title: { default: "Nivra", template: "%s | Nivra" },
-  description: "Get images that were shared without your consent taken down, privately.",
+  description: "Find, prove and take down images shared without your consent - privately.",
   // Victims may be searched for; keep the prototype out of search engines.
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };
+
+export const viewport: Viewport = { themeColor: "#05070d", colorScheme: "dark" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   // suppressHydrationWarning: browser extensions (e.g. custom-cursor ones)
@@ -30,10 +29,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${vollkorn.variable} ${hanken.variable} ${newsreader.variable}`}
+      className={`${syne.variable} ${manrope.variable} ${mono.variable}`}
       suppressHydrationWarning
     >
       <body className="min-h-dvh flex flex-col" suppressHydrationWarning>
+        <Backdrop />
         <a href="#main" className="skip-link">
           Skip to content
         </a>

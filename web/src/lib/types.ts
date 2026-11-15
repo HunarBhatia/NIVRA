@@ -112,6 +112,10 @@ export interface DiscoveryJob {
   provider: string;
   input_url: string;
   status: "queued" | "running" | "done" | "failed";
+  /** Finer progress for the live scan view (section 22.5). */
+  stage: "queued" | "fetching" | "scanning" | "done" | "failed";
+  /** One entry per image read on the page (no image data, only hashes). */
+  scan_log: ScanEntry[] | null;
   error_message: string | null;
   page_title: string | null;
   candidates_found: number;
@@ -120,6 +124,18 @@ export interface DiscoveryJob {
   matches_found: number;
   created_at: string;
   finished_at: string | null;
+}
+
+export interface ScanEntry {
+  i: number;
+  url: string;
+  result: MatchClass | "unreadable";
+  phash?: string;
+  distance?: number | null;
+  exact?: boolean;
+  label?: string;
+  /** XOR of the protected and found fingerprints: the bits that differ. */
+  diff?: string | null;
 }
 
 export interface DiscoveredMatch {
@@ -174,6 +190,7 @@ export type ComplaintStatus =
   | "draft_generated"
   | "user_approved"
   | "submitted_by_user"
+  | "sent_by_nivra"
   | "submission_confirmed"
   | "response_received"
   | "resolved"
@@ -276,3 +293,18 @@ export interface NotificationPrefs {
   has_email: boolean;
   email_backend: "console" | "smtp";
 }
+
+// ---------- Sending (section 22.6) ----------
+
+export interface Recipients {
+  emails: { address: string; why: string }[];
+  form_only: boolean;
+  forms: { label: string; target: string | null }[];
+  platform: string | null;
+}
+
+export type SentComplaint = Complaint & {
+  sent_to: string[];
+  delivered: boolean;
+  replies_to_you: boolean;
+};
