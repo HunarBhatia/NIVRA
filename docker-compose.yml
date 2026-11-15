@@ -1,0 +1,66 @@
+# Nivra - production-style stack (section 21.8). Docs: deploy/DEPLOYMENT.md
+#   cp deploy/.env.production.example deploy/.env.production   # fill it in
+#   docker compose up -d --build
+# Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in
+# front of "web" - production cookies require HTTPS.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nivra
+      POSTGRES_USER: nivra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.production}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nivra -d nivra"]
+      interval: 10s
+      retries: 10
+
+  migrate:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    env_file: deploy/.env.production
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    env_file: deploy/.env.production
+    volumes:
+      - nivradata:/data
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  # Exactly ONE worker: it runs page checks AND the scheduler (section 20.15).
+  worker:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    env_file: deploy/.env.production
+    command: ["python", "-m", "app.discovery.worker"]
+    volumes:
+      - nivradata:/data
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NIVRA_API_URL: http://api:8000
+    environment:
+      NIVRA_API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"   # only the reverse proxy should reach it
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  nivradata:   # encrypted evidence files + agent checkpoints (back it up)

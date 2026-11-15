@@ -42,11 +42,19 @@ online" to "it's been taken down and I'm watching for re-uploads". It finds
 the right reporting channel, writes the legal notice for them, tracks every
 link, and escalates when platforms don't respond.
 
-1.4 Kinds of non-consensual images in scope [OPEN]
+1.4 Kinds of non-consensual images in scope [DECIDED - see D1]
 (a) Intimate images shared without consent (NCII, "revenge porn").
 (b) Morphed / AI-generated deepfakes using someone's face.
-(c) Ordinary photos misused - fake profiles, catfishing, doxxing, photos of
-children posted by others. Scope decision is pending - see Decision Log D1.
+(c) Ordinary photos misused for impersonation - fake profiles, catfishing.
+All three are in scope for adults. They share one takedown flow; only the
+legal basis and wording of the notice change.
+
+1.5 Children are a special case [DECIDED]
+If the person in the image was under 18 when it was taken, Nivra does NOT
+handle the image at all. It routes the user to NCMEC's Take It Down, the
+cybercrime.gov.in "child pornography/CSAM" category and the 1930 helpline.
+Reason: even holding such material is a crime, and these channels have legal
+powers we don't.
 
 
 --------------------------------------------------------------------------------
@@ -205,11 +213,16 @@ Plan: build an MVP that is almost free to run (user links + notice generation
 6. PRODUCT FORM FACTOR
 --------------------------------------------------------------------------------
 
-6.1 Web app / PWA - core product [PROPOSED]
-Works on any phone without installing anything, which matters because most
-victims (especially in India) will find Nivra on mobile, often in a hurry.
-A Progressive Web App can later be "installed" to the home screen and look
-like a native app.
+6.1 Website - the core product [DECIDED - see D4]
+Nivra is a website, not an app. It opens in any browser on phone or laptop
+with nothing to install. Pages are responsive (they adapt to small screens)
+because many victims will find Nivra on their phone, often in a hurry.
+We deliberately do not push "install this app" (no PWA, no app store).
+
+6.1a Why a website and not an app
+No install means no app icon on the phone for someone else to spot, which
+matters for a victim's privacy. It is also one codebase, needs no app-store
+review, and can be shared as a simple link by NGOs, friends or police.
 
 6.2 Chrome extension - companion [PROPOSED, phase 2]
 Right-click any image on any page -> "Report with Nivra". It captures the
@@ -228,9 +241,10 @@ A lot of leaked content in India spreads on Telegram. A bot that accepts a
 forwarded link and opens a case meets users where the harm happens. Worth
 considering after the web app is stable.
 
-6.5 Native mobile app [REJECTED for now]
-App-store review, two codebases, and installation friction. The PWA covers
-the same need until we have real users asking for native features.
+6.5 Mobile app / PWA [REJECTED]
+App-store review, two codebases, installation friction, and a visible icon
+on the victim's phone. The team prefers a pure website; a responsive site
+covers phone users without any of these downsides.
 
 
 --------------------------------------------------------------------------------
@@ -267,7 +281,7 @@ counselling, and pro-bono lawyers built into the flow.
 
 
 --------------------------------------------------------------------------------
-8. PROPOSED ARCHITECTURE (MVP) [PROPOSED - not final]
+8. ARCHITECTURE (MVP) [DECIDED - see D3, D6]
 --------------------------------------------------------------------------------
 
 8.1 Guiding principle: data minimisation
@@ -276,7 +290,7 @@ statuses and the minimum contact info needed. If we're ever breached, the
 leaked data should be close to useless to an attacker.
 
 8.2 Frontend
-Next.js (React) + TypeScript + Tailwind CSS, delivered as a PWA. Next.js
+Next.js (React) + TypeScript + Tailwind CSS, as a responsive website. Next.js
 gives us routing, server rendering for fast first load on slow phones, and
 API routes in the same project. TypeScript catches bugs early.
 
@@ -324,27 +338,284 @@ plain-language explanations, never more than one decision per screen.
 
 
 --------------------------------------------------------------------------------
-10. DECISION LOG
+10. MVP BLUEPRINT (what we build first and how the pieces fit)
+--------------------------------------------------------------------------------
+
+10.1 The MVP in one sentence
+A user pastes the links where their image appears; Nivra identifies each
+platform, writes the right legal notice, shows exactly where to send it,
+tracks every link's status, and tells the user what to do when a platform
+doesn't respond.
+
+10.2 The main user journey ("Start a case" wizard)
+Step 1 Safety check - is the user safe right now? Was the person under 18?
+  (Under 18 -> redirect to Take It Down / cybercrime.gov.in, flow ends.)
+Step 2 What happened - intimate image, morphed/deepfake, or fake profile.
+Step 3 Where is it - paste one or more links (more can be added later).
+Step 4 Evidence - guided screenshot + timestamp capture before removal.
+Step 5 Notices - Nivra drafts one notice per link; user reviews and sends.
+Step 6 Save case - user gets a Case ID + chooses a passphrase to return.
+
+10.3 Case identity (anonymous accounts, see D7)
+A case is identified by a random Case ID (e.g. NV-7K3Q-92XD) and a
+passphrase the user chooses. The server stores only a slow hash of the
+passphrase (Argon2), never the passphrase itself. Lose both = lose the case,
+which is the honest trade-off for anonymity; we say this clearly.
+
+10.4 What lives where [DECIDED - D9]
+Links, statuses and notice text are stored on the server, because the server
+must re-check links and send reminders. Evidence (screenshots) is encrypted
+on the user's device with a key derived from their passphrase, so even if
+it's backed up to our server, we cannot read it.
+
+10.5 Link status lifecycle
+found -> reported -> awaiting response -> removed
+                                   \-> no response (deadline passed) -> escalated
+                                   \-> rejected -> escalated
+removed -> reappeared (re-check found it live again) -> reported ...
+Every status change is stored as an event, so the user sees a full timeline
+and we can build the evidence PDF from it.
+
+10.6 Platform resolution
+When a link is added, Nivra reads its domain and looks it up in the Platform
+Directory (instagram.com -> Meta). If unknown, it looks up the hosting
+provider (DNS/IP -> host's abuse contact) so there is always someone to
+send a notice to. Unknown domains are logged so we can add them over time.
+
+10.7 Data model (database tables)
+  cases           - id, passphrase_hash, category, created_at, email (opt.)
+  links           - id, case_id, url, platform_id, status, last_checked_at
+  status_events   - id, link_id, from_status, to_status, note, created_at
+  notices         - id, link_id, legal_basis, channel_id, body, sent_at
+  platforms       - id, name, domains[], country, notes
+  report_channels - id, platform_id, type (form/email/in-app), target,
+                    legal_basis, expected_response_hours
+A case has many links; a link has many events and notices; a platform has
+many report channels (e.g. Meta has an NCII form AND a grievance email).
+
+10.8 Legal basis modules
+Each law is a module: India IT Rules, US TAKE IT DOWN, US DMCA, EU GDPR,
+platform policy. A module says when it applies (country, category, who took
+the photo), its deadline, and its notice template. The notice generator
+picks the strongest applicable module for each link.
+
+10.9 Pages (routes)
+  /                    landing - what Nivra does, privacy promise, start
+  /start               the case wizard (10.2)
+  /case                open an existing case (Case ID + passphrase)
+  /case/[id]           case dashboard - links, statuses, next actions
+  /guides              platform guides directory
+  /guides/[platform]   how to report on one platform, step by step
+  /help                helplines, NGOs, legal aid, police reporting
+  Quick exit (every page) -> replaces the tab with a neutral site.
+
+10.10 API (server endpoints)
+  POST /api/cases                 create case, returns Case ID
+  POST /api/cases/open            verify Case ID + passphrase, start session
+  POST /api/cases/[id]/links      add links, resolves platform
+  PATCH /api/links/[id]           update status (e.g. user marks "sent")
+  POST /api/notices/draft         generate notice text for a link
+  GET  /api/platforms/resolve     url -> platform + report channels
+
+10.11 Repository layout [DECIDED - D10]
+  /web          the Next.js app (frontend + API)
+  /extension    Chrome extension (phase 2, empty for now)
+  PROJECT_DETAILS.txt  this guide
+Why: keeping the web app in its own folder leaves room for the extension
+(and maybe a Telegram bot) in the same repo without a messy restructure.
+
+10.12 Build order
+  Phase 1  Scaffold, landing page, design system, quick exit, help page.
+  Phase 2  Case wizard + Platform Directory (seeded with top ~20 platforms).
+  Phase 3  Database, anonymous cases, case dashboard, status tracking.
+  Phase 4  Notice generation (templates first, Claude-assisted after).
+  Phase 5  Link re-checks, escalation suggestions, evidence PDF export.
+  Phase 6  Chrome extension, optional email alerts, Hindi.
+
+
+10.13 Scaffold - what was set up and why (2026-11-14)
+The web app was created with create-next-app: Next.js 16, React 19,
+TypeScript, Tailwind CSS 4, ESLint, the App Router and a src/ folder.
+The App Router is Next's current routing system - each folder in
+src/app becomes a page, which maps cleanly onto the routes in 10.9.
+
+10.14 Note for anyone (or any AI) editing the code
+Next.js 16 has breaking changes from older versions. web/AGENTS.md (created
+by Next.js itself) says to check the docs bundled in
+node_modules/next/dist/docs/ before writing code, not to rely on memory.
+
+10.14a Hydration warning from browser extensions (fixed 2026-11-14)
+A custom-cursor browser extension added attributes to <html> before React
+loaded, so Next.js showed a "hydration mismatch" error. It was not our bug.
+We added suppressHydrationWarning to <html> and <body> in layout.tsx; it
+ignores only those two tags' own attributes. Victims use extensions too.
+
+10.15a Working prototype frontend (built 2026-11-14)
+A clickable prototype of the whole first-version journey now exists. You
+can start a case, paste links, get notices, track statuses, see escalation
+steps, lock the case and reopen it. It runs entirely in the browser with no
+server or database yet, so it can be tested today.
+
+10.15b Design direction - "Garden" [DECIDED - D11]
+Warm oat paper, deep green ink, Vollkorn serif headings over Hanken Grotesk
+body text, hairline rules, one leaf-green colour for the main action. It
+feels calm, human and trustworthy - not clinical, not "tech startup", and
+not alarming. No photos of people anywhere, on purpose (victims of image
+abuse should never be shown faces or bodies).
+
+10.15c The signature: the Case ID slip
+The one thing a visitor should remember is the Case ID card (e.g.
+NV-BGUH-9K9R). It is shown on the landing page and the dashboard, because it
+captures Nivra's promise: you get help without giving your name.
+
+10.15d Where the code lives (web/src)
+  app/page.tsx              landing page
+  app/start/StartWizard.tsx the 6-step "Start a case" flow
+  app/case/CaseView.tsx     unlock form + case dashboard
+  app/guides/...            platform directory and per-platform guides
+  app/help/page.tsx         helplines, police reporting, under-18 routes
+  components/               header, footer, quick-exit button
+  lib/platforms.ts          Platform Directory + link -> platform lookup
+  lib/notices.ts            legal grounds + notice template generator
+  lib/caseStore.ts          prototype case storage (see 10.15e)
+  lib/types.ts              shared data types (matches blueprint 10.7)
+  app/globals.css           the whole design system as CSS tokens
+
+10.15e Prototype storage - temporary [DECIDED - D12]
+Cases are stored in the browser's localStorage, and the open case in
+sessionStorage (closing the tab locks it). Passphrases are hashed with
+PBKDF2 (150,000 rounds) and never stored as typed. This is a stand-in:
+the real product stores links on a server (D9) so it can re-check them.
+
+10.15f Quick exit
+The dark "Quick exit" button is on every page, and pressing Esc twice does
+the same. It clears the session and replaces the tab with a Google weather
+search using location.replace, so pressing Back does not return to Nivra.
+
+10.15g How links are recognised
+Pasted text is split one link per line (or comma). Each link's domain is
+matched against the directory, including subdomains (m.facebook.com ->
+Facebook). Unknown sites get generic steps: contact page, hosting company,
+Cloudflare abuse, Google de-indexing.
+
+10.15h How notices are written
+Every notice cites IT Rules 2021 Rule 3(2)(b) (24-hour removal), plus IT Act
+sections matching the category (66E/67/67A for intimate and morphed images,
+66C/66D for impersonation), plus copyright if the user took the photo. They
+are templates, not legal advice, and need a lawyer's review before launch.
+
+10.15i Known prototype limits (must fix before launch)
+- Platform links, steps and helpline numbers are unverified prototype data.
+- Cases live in one browser only; clearing browser data deletes them.
+- "Pretend the deadline passed" is a testing button and must be removed.
+- No server, so no automatic re-checks, reminders or email sending yet.
+
+10.15j How to test as a user
+Run "npm run dev" inside web/, open localhost:3000, click Start a case and
+go through every step with fake links (e.g. instagram.com/p/test1,
+t.me/test/1, randomsite.xyz/a). On the dashboard, mark a link as sent, press
+the prototype deadline button, and check that the escalation steps appear.
+
+10.15 Branching workflow
+main always holds working code. Each piece of work happens on its own branch
+(e.g. setup/mvp-architecture), gets pushed, and is merged into main through
+a pull request. This keeps a clear history of why each change was made.
+
+
+--------------------------------------------------------------------------------
+11. DECISION LOG
 --------------------------------------------------------------------------------
 
 D0  [DECIDED] Repository: github.com/HunarBhatia/NIVRA, local folder
     Desktop/NIVRA. All code is pushed here.
-D1  [OPEN] Scope - NCII only, or all non-consensual images (deepfakes, fake
-    profiles, children's photos)?
-D2  [OPEN] Geography - India first, or global from day one?
-D3  [PROPOSED] Images never leave the user's device; server stores no images.
-D4  [PROPOSED] Main form factor: mobile-first web app (PWA). Chrome extension
-    as phase-2 companion. Agent skill rejected as main product.
-D5  [PROPOSED] MVP discovery: user-provided links + assisted reverse search +
-    StopNCII referral. No own crawler or face search in MVP.
-D6  [PROPOSED] Stack: Next.js + TypeScript + Tailwind + PostgreSQL + Claude.
-D7  [OPEN] Accounts - anonymous passphrase, email login, or both?
-D8  [OPEN] Project goal - hackathon / portfolio vs. real public launch. This
-    decides how much verification and legal rigour we need.
+
+D1  [DECIDED 2026-11-14] Scope: intimate images, deepfakes/morphed images,
+    and impersonation (fake profiles) - for adults. Minors are routed to
+    Take It Down / cybercrime.gov.in, never handled by Nivra.
+    Why: all three share the same takedown mechanics, so covering them costs
+    little extra, and morphed images are a fast-growing problem in India.
+    Excluding children's images keeps us legally safe.
+
+D2  [DECIDED 2026-11-14] Geography: India first, built to go global.
+    Why: Indian law (IT Rules 24-hour removal) is strong and few tools serve
+    Indian users. Laws are kept as separate "legal basis" modules (India,
+    US, EU...) so adding a country means adding a module, not a rewrite.
+
+D3  [DECIDED 2026-11-14] Images never leave the user's device; the server
+    stores no images, only links, hashes and statuses.
+    Why: removes breach risk and the risk of holding illegal material. It
+    also makes "launch for real" possible without a legal team.
+
+D4  [DECIDED 2026-11-14, revised same day] Form factor: a website that
+    works well on phones and laptops - NOT an app or PWA (team preference;
+    also no tell-tale app icon on a victim's phone). Chrome
+    extension in phase 2. Agent skill rejected as the main product.
+
+D5  [DECIDED 2026-11-14] MVP discovery: user-pasted links + assisted reverse
+    image search + StopNCII referral. No own crawler or face search in MVP.
+    Why: zero legal risk and near-zero cost; expensive discovery is only
+    worth building once the takedown flow is proven.
+
+D6  [DECIDED 2026-11-14] Stack: Next.js (App Router) + TypeScript + Tailwind
+    + PostgreSQL + Claude for notice drafting.
+    Why: one codebase for frontend and API, large ecosystem, easy hosting,
+    and strong typing for a sensitive app where bugs are costly.
+
+D7  [DECIDED 2026-11-14] Accounts: anonymous by default (case ID +
+    passphrase), optional email added later for reminders and alerts.
+    Why: fear of being identified is a big reason victims don't seek help.
+    Email is opt-in for those who want follow-up notifications.
+
+D8  [DECIDED 2026-11-14] Goal: build to real-launch quality, released in
+    stages. Portfolio-ready first, public launch when safety features
+    (quick exit, verification, rate limits) are complete.
+    Why: D3 keeps legal risk low enough that a real launch is realistic,
+    and a real product is worth more than a demo, even as a portfolio piece.
+
+
+D9  [DECIDED 2026-11-14] Links/statuses/notices stored server-side; evidence
+    encrypted client-side with a passphrase-derived key.
+    Why: the server needs to read links to re-check them, but it never needs
+    to read evidence - so evidence stays unreadable to us.
+
+D10 [DECIDED 2026-11-14] Repo layout: Next.js app in /web, extension later in
+    /extension.
+    Why: room for multiple clients in one repo without restructuring later.
+
+D11 [DECIDED 2026-11-14] Visual design: "Garden" direction (warm oat paper,
+    green ink, Vollkorn + Hanken Grotesk, no imagery of people).
+    Why: calm and human for people in distress; words, not pictures, carry
+    the page. Open to change - the user reviews and asks for changes.
+
+D12 [RETIRED 2026-11-14 by phase 2] Prototype stored cases in browser storage.
+    Why: gives a fully clickable prototype today with no backend. To be
+    replaced by the server database (D9) in build phase 3.
+
+D13 [DECIDED 2026-11-14] Registered images are fingerprinted ON THE DEVICE.
+    The browser computes SHA-256, pHash and the embedding; only fingerprints
+    reach the server. D3 still holds: Nivra's server never stores a
+    registered original. (Section 13.5-13.9.)
+    Why: removes breach and illegal-material risk; same model as StopNCII.
+
+D14 [DECIDED 2026-11-14] Accounts: anonymous by default (Nivra ID +
+    passphrase), optional email added later for alerts and recovery. One
+    account can hold several cases and protected images.
+    Why: keeps D7's low barrier; monitoring alerts need an opt-in contact.
+
+D15 [DECIDED 2026-11-14] Development database: SQLite now, PostgreSQL +
+    pgvector in production, same code switched by DATABASE_URL. Docker,
+    Redis and a task queue arrive with the discovery phase.
+    Why: this machine has no Docker/Postgres; zero-install start.
+
+D16 [DECIDED 2026-11-14] Maritime and Prune are optional adapters, off by
+    default, behind an agent-runtime interface and an LLMProvider interface.
+    Default: call the model provider directly, run agents in our backend.
+    Why: both add third parties with no stated data region or prompt
+    retention policy; sensitive case text should not travel further.
 
 
 --------------------------------------------------------------------------------
-11. GLOSSARY
+12. GLOSSARY
 --------------------------------------------------------------------------------
 
 NCII - Non-Consensual Intimate Imagery.
@@ -355,4 +626,1371 @@ Perceptual hash (pHash, PDQ) - a hash that stays similar even if the image is
 De-indexing - removing a page from search results without removing the page.
 Grievance Officer - the person Indian platforms must name to handle complaints.
 PWA - Progressive Web App; a website that can be installed like an app.
+  Nivra deliberately does NOT do this (see D4).
+Responsive - a page layout that adapts to the screen size (phone/laptop).
 CDN - Content Delivery Network (e.g. Cloudflare) that sits in front of sites.
+
+
+--------------------------------------------------------------------------------
+13. PLATFORM V2 - FROM PROTOTYPE TO REAL PLATFORM (audit, 2026-11-14)
+--------------------------------------------------------------------------------
+
+13.1 What changed
+The team set a bigger vision: users register images they want protected,
+Nivra fingerprints them, discovers copies online through authorised sources,
+lets the user confirm matches, then drafts, tracks and follows up complaints.
+Built with a Python/FastAPI backend and four AI agents (LangGraph).
+
+13.2 Audit - what already works (prototype, frontend only)
+Landing, help and 12 platform guides; 6-step case wizard with under-18
+redirect; link -> platform recognition; template notices (IT Rules 2021 +
+IT Act); anonymous Case ID + passphrase; dashboard with statuses, history
+and escalation ladder; quick exit. All verified by clicking through.
+
+13.3 Audit - partial or fake today
+Cases live in browser storage only (D12). Platform links, helplines and
+legal text are unverified. No server, so no re-checks or reminders. The
+"pretend the deadline passed" button is a test tool. No tests exist yet.
+
+13.4 Audit - missing versus the vision
+Backend and database; accounts/auth; image registration; SHA-256, pHash
+and embedding fingerprints; discovery providers and matching; human review
+of matches; evidence store; agents; background jobs; notifications;
+data deletion; audit trail; deployment.
+
+13.5 The big conflict: uploading images vs D3
+D3 says images never leave the user's device. Registering images for
+monitoring seems to need uploads. Storing intimate images on our server is
+a breach magnet, and if one shows a minor we'd hold illegal material.
+StopNCII solves this by fingerprinting on the device. Decision: see D13.
+
+13.6 Option A - fingerprint on the device (recommended)
+The browser computes SHA-256 and pHash locally; only fingerprints are sent.
+Embeddings can also run in the browser with a small vision model
+(e.g. CLIP via ONNX/transformers.js, a one-off download of ~80-100 MB). The
+server never holds a registered original. Matches what the vision asks for:
+"fingerprint-only monitoring after registration".
+
+13.7 Option B - transient server processing
+The image is uploaded over TLS, fingerprinted in memory and deleted at once;
+only fingerprints are kept. Simpler and allows bigger models, but the image
+does touch our server, so logs, crashes and memory dumps become risks.
+
+13.8 Option C - encrypted storage of originals
+Keep originals encrypted with a retention window so they can be re-processed
+when models improve. Most flexible, most dangerous. Not recommended.
+
+13.9 Fingerprints are not harmless either
+A perceptual hash or embedding can't rebuild the image, but embeddings can
+leak some visual features (inversion attacks exist). They are encrypted at
+rest, tied to the account, and deleted when the user revokes registration.
+
+13.10 Discovery reality check
+No free, unrestricted reverse-image-search API exists. Google Lens has no
+API, Bing's search APIs were retired (2025), TinEye is paid and licensed.
+First provider: user-submitted URLs (always allowed). Next: one licensed
+provider (e.g. TinEye) once there is a budget and their terms allow it.
+
+13.11 Discovery risk - fetching candidate images
+To match a candidate the server must download it. A candidate could be
+illegal material (CSAM). Rules: fetch only via allowed providers, respect
+robots.txt and rate limits, process in memory, never persist candidate
+images, keep only URL + fingerprints + scores. Industry CSAM-hash checks
+(e.g. PhotoDNA) need approval and are a later step.
+
+13.12 Match classification (never automatic accusation)
+exact (same SHA-256) -> high-confidence (pHash Hamming distance <= ~8 of 64
+or embedding cosine >= ~0.92) -> possible (looser thresholds) -> none.
+Thresholds are configuration, not code. Every match needs the user's
+confirmation before anything is drafted or sent.
+
+13.13 Agents - what they will and won't do
+Discovery Coordinator (jobs, providers), Verification Assistant (explains
+scores, never decides consent), Complaint Generation (drafts only, user
+approves), Follow-up (deadlines, reminders, never assumes success). Agents
+see URLs, scores and case text - never image pixels. LLM output is
+validated against schemas before use.
+
+13.14 Maritime (maritime.sh) - findings
+A hosting platform that runs each agent in its own micro-VM, deployed from
+a Dockerfile repo or image; REST API at api.maritime.sh with bearer keys,
+Python SDK "maritime", cron and webhook triggers. LangGraph works only as a
+custom container. Docs state no data residency, prompt-retention policy or
+privacy policy, and logs are kept 12 hours.
+
+13.15 Prune (withprune.com) - findings
+A managed LLM gateway: change the base URL, keep your provider keys in its
+vault, get spend caps, caching and "Shield" PII guardrails. OpenAI-style
+chat completions are documented; native Anthropic Messages support is not
+confirmed. No processing region stated; usage metadata kept for billing;
+it says it is not SOC 2 certified.
+
+13.16 Recommendation for Maritime and Prune
+Both would send sensitive case text to extra third parties with unclear
+retention. Plan: build an LLMProvider interface and an agent runtime
+interface; default to calling the model provider directly and running
+agents inside our own backend; add Prune and Maritime as optional adapters,
+switched off by default. Decision: see D16.
+
+13.17 Proposed stack (keep it lean)
+FastAPI + SQLAlchemy 2 + Alembic; PostgreSQL with the pgvector extension
+instead of a separate Qdrant server (one database, fewer moving parts);
+Redis + a task queue only from the discovery phase on; private encrypted
+object storage only for evidence the user chooses to keep; LangGraph for
+the agents.
+
+13.18 Why pgvector over Qdrant
+At our scale (thousands, not billions, of fingerprints) pgvector is fast
+enough, keeps fingerprints and permissions in one transactional database,
+and removes a service to secure and back up. A vector-store interface lets
+us move to Qdrant later if search volume demands it.
+
+13.19 Proposed folder structure
+  web/                 existing Next.js app (keeps the Garden design)
+  backend/app/         FastAPI app: api/ (routes), models/ (database),
+                       schemas/ (validated I/O), services/ (business logic),
+                       core/ (config, security, db), fingerprint/, discovery/,
+                       agents/, llm/ (provider interface + adapters)
+  backend/alembic/     database migrations
+  backend/tests/       pytest suite
+  extension/           Chrome extension (later)
+
+13.20 Data flow (target)
+Browser fingerprints image -> POST fingerprints -> stored per user ->
+discovery job (provider gives candidate URLs) -> worker fetches candidate in
+memory -> fingerprints compared -> match saved with scores -> user reviews ->
+confirmed match becomes an incident -> complaint draft -> user approves and
+submits -> follow-up tracks deadline and responses.
+
+13.21 Phase plan (from the vision brief)
+P1 audit (this section) - P2 backend foundation: FastAPI, DB, auth, cases API,
+frontend wired to it - P3 registration + fingerprints - P4 discovery +
+matching + jobs - P5 agents - P6 incidents + evidence + complaints -
+P7 monitoring + notifications - P8 production readiness.
+
+
+--------------------------------------------------------------------------------
+14. PHASE 2 - BACKEND FOUNDATION (built and tested 2026-11-14)
+--------------------------------------------------------------------------------
+
+14.1 What was built
+A FastAPI backend in backend/ with a real database, anonymous accounts,
+login sessions, cases, links, status history, an audit trail and full
+account deletion. The website now saves everything through it instead of
+browser storage (D12 is retired).
+
+14.2 How the website reaches the backend
+The browser only talks to localhost:3000. Next.js forwards /api/* to FastAPI
+on port 8000 (a "rewrite" in web/next.config.ts). This keeps the login
+cookie first-party and means no cross-site (CORS) setup is needed.
+
+14.3 Backend layout (backend/app)
+  main.py          app setup, security headers, safe error messages
+  core/config.py   every setting from environment variables (NIVRA_*)
+  core/db.py       database engine, UTC-safe timestamp type
+  core/security.py passphrase hashing, session tokens, Nivra IDs, encryption
+  core/ratelimit.py login/registration rate limiting
+  models.py        database tables
+  schemas.py       validated request/response shapes
+  api/             routes: auth.py, account.py, cases.py, deps.py
+  services/        links.py (URL rules, status machine), audit.py
+
+14.4 Tables
+users (Nivra ID, Argon2 passphrase hash, optional encrypted email),
+sessions (SHA-256 of the token, expiry), cases, case_links (url, host,
+status), status_events (timeline), audit_events (who did what, never
+content). Image, fingerprint, discovery and complaint tables arrive with
+the phases that use them.
+
+14.5 Why Argon2 for passphrases
+Argon2id is memory-hard: guessing passphrases from a leaked database needs
+lots of memory per guess, which makes GPU cracking far slower than with
+plain hashes. Login also spends the same time for unknown IDs, so timing
+doesn't reveal which Nivra IDs exist.
+
+14.6 Why sessions are random tokens in httpOnly cookies
+A 256-bit random token is set as an httpOnly, SameSite=Lax cookie, so
+page scripts can't read it (blocks theft by XSS). The database stores only
+its SHA-256, so a database leak doesn't hand out working logins. Logout and
+Quick exit delete the session on the server.
+
+14.7 Why the server checks status changes
+The buttons only show valid next steps, but the server enforces the rules
+too (e.g. a link can't jump from "found" to "removed"). That way a broken or
+tampered client can't corrupt a case's history.
+
+14.8 Every query is scoped to the account
+Cases and links are always looked up together with the logged-in user's ID,
+so guessing another account's case ID returns "not found". Tested
+explicitly in tests/test_cases.py.
+
+14.9 Privacy-safe errors and logs
+Validation errors name the wrong field but never echo what was typed
+(passphrases, links). Unexpected errors log only the error type and route.
+The audit trail records actions and IDs, never URLs, emails or notice text.
+
+14.10 User-controlled deletion
+"Delete my account and all data" (needs the passphrase again) removes the
+account, sessions, cases, links and history. Audit rows stay only as
+anonymous counts with no link to the person.
+
+14.11 Optional email, encrypted
+PATCH /api/account can store an email for future alerts, encrypted with a
+key from NIVRA_DATA_KEY (Fernet). Without that key the feature switches off
+instead of storing plaintext. There is no email screen on the website yet.
+
+14.12 The timezone bug we caught
+SQLite drops time zones, so timestamps came back without "Z" and browsers
+would read them as local time - 5.5 hours off in India. A custom UTCDateTime
+column type now always returns UTC. A test caught it before release.
+
+14.13 Settings that must change for production
+NIVRA_ENVIRONMENT=production refuses to start unless cookies are Secure,
+prototype tools are off and the database is PostgreSQL. Interactive API
+docs (/api/docs) exist only in development.
+
+14.14 Tests (backend/tests, 31 passing)
+Registration, login, logout, wrong passphrase vs unknown ID, rate limiting,
+hashing (nothing stored in plaintext), encrypted email, account deletion,
+security headers, case CRUD, cross-account isolation, link validation,
+the status state machine, the prototype deadline tool, and a check that
+the Alembic migrations build exactly the tables the models describe.
+
+14.15 How to run everything
+Terminal 1: cd backend, then .venv/Scripts/python -m uvicorn app.main:app
+--reload --port 8000. Terminal 2: cd web, then npm run dev. Open
+localhost:3000. Full setup steps are in backend/README.md.
+
+14.16 Still not done after phase 2
+No image registration or fingerprints yet (phase 3). No discovery, agents,
+notifications or email screen. Rate limiting is per process (moves to Redis
+later). Platform data and legal wording still unverified. Not deployed.
+
+
+--------------------------------------------------------------------------------
+15. PHASE 3 - IMAGE REGISTRATION AND FINGERPRINTING (built 2026-11-14)
+--------------------------------------------------------------------------------
+
+15.1 What was built
+A "Protect images" page (/protect). The user picks an image on their own
+device; the browser computes three fingerprints and sends only those to
+Nivra. The image itself is never uploaded (D13). Users can pause, resume or
+remove protection, and check a copy they found against their own images.
+
+15.2 The three fingerprints
+SHA-256: a fingerprint of the exact file bytes - finds byte-identical
+copies only. pHash: a 64-bit "visual" fingerprint that survives resizing,
+recompression and small edits. Embedding: 512 numbers from an AI vision
+model (CLIP) describing the image - catches crops and heavier edits.
+
+15.3 How pHash works (algorithm "phash-dct-v1")
+Shrink the image to 32x32, convert to grey, run a 2-D DCT (the maths behind
+JPEG), keep the 64 lowest-frequency values, and set each bit by whether the
+value is above their median. Similar-looking images keep most bits, so the
+number of differing bits ("Hamming distance") measures similarity.
+
+15.4 Two implementations, one answer
+Registered images are hashed in the browser (TypeScript); candidates found
+online will be hashed on the server (Python, phase 4). Both must agree.
+Shared test vectors (backend/tests/fixtures/phash_vectors.json) are checked
+by pytest AND by web/scripts/check-phash.ts.
+
+15.5 The floating-point bug the vectors caught
+On symmetric images many DCT values are exactly zero in theory but tiny
+noise (1e-13) in practice, and that noise differed between NumPy and
+JavaScript, flipping bits. Fix: a value only counts as "above the median"
+if it beats it by a tiny relative margin (1e-9). Now all vectors match.
+
+15.6 Real-browser cross-check
+The same PNG hashed by the browser and by Python gave identical SHA-256
+and identical pHash (distance 0). A 3000x2000 JPEG differed by 2 of 64
+bits because browsers and Pillow shrink images differently - well inside
+the "high" threshold of 6.
+
+15.7 Why the browser shrinks big images in steps
+A canvas that shrinks a huge photo to 32x32 in one jump skips pixels and
+gives a noisy result. Halving the size repeatedly first approximates
+Pillow's area-averaging resize, keeping browser and server hashes close.
+
+15.8 The AI embedding, on the device
+CLIP ViT-B/32 (8-bit quantised) runs in the browser through transformers.js
+(@huggingface/transformers 4.3.1, ONNX Runtime Web). It is opt-in: about
+90 MB downloads once from Hugging Face and is cached; the image never
+leaves the device. On a test machine it took about 19 seconds the first time.
+
+15.9 Swappable model
+The server records the model name ("clip-vit-base-patch32-q8") with every
+embedding and only compares embeddings from the same model. Changing model
+means adding a new name to NIVRA_ALLOWED_EMBEDDING_MODELS - no rewrite.
+
+15.10 Classification rules
+exact = same SHA-256. high = pHash distance <= 6, OR pHash <= 12 with
+embedding cosine >= 0.95. possible = pHash <= 12, OR embedding cosine
+>= 0.92. Otherwise none. Thresholds are settings (NIVRA_PHASH_*,
+NIVRA_COSINE_*). Every result is a suggestion for human review.
+
+15.11 What testing taught us about CLIP (important)
+A DIFFERENT test image scored 0.95 cosine with the original - CLIP judges
+what an image is about, not whether it is the same picture. So an embedding
+alone can never make a match "high"; at most "possible". Results: resized
+copy = high, cropped copy = possible (pHash alone missed it), different
+image = possible (a false alarm that a human dismisses).
+
+15.12 Next step for the embedding (recommended)
+Evaluate on a real image-copy-detection benchmark (e.g. DISC21 or
+Copydays) and consider a model trained for copy detection, such as SSCD,
+instead of CLIP. The swappable design (15.9) exists for exactly this.
+
+15.13 Consent and the under-18 rule
+Before choosing an image the user confirms the person was 18+ when it was
+taken and that it is them or they are authorised. "No / not sure" routes to
+Take It Down, cybercrime.gov.in and 1930 and stops. The server also refuses
+registration without both confirmations and records the consent version.
+
+15.14 What the server stores per protected image
+A label the user chose (advised not to describe the image), status,
+consent version and time, and the fingerprints. Fingerprint values are
+never sent back to the browser. Removing protection deletes them; deleting
+the account deletes everything.
+
+15.15 Embeddings at rest
+Embeddings could leak some visual features (13.9), but app-level encryption
+would stop the database searching them. Decision: rely on encrypted storage
+at the database/disk level in production, strict per-account access, and
+deletion on revoke. Revisit if a vector database is introduced.
+
+15.16 Trauma-informed details
+The local preview is blurred by default with a "Show preview" button. The
+page states plainly what works today and that automatic web searching
+arrives in the next phase - no implied monitoring that doesn't exist yet.
+
+15.17 API added (backend/app/api/images.py)
+POST /api/images (register fingerprints), GET /api/images, PATCH
+/api/images/{id} (label, pause/resume), PUT /api/images/{id}/embedding (add
+the AI fingerprint later), DELETE /api/images/{id} (revoke), POST
+/api/images/check (compare a copy with your own images only).
+
+15.18 Tests (57 backend tests passing + TS vector check)
+Shared vectors, resize/JPEG/brightness robustness, different images far
+apart, transparency handling, classification rules incl. the CLIP cap,
+consent required, malformed fingerprints and smuggled image data rejected,
+duplicates, pause/resume, revoke, cross-account isolation, account deletion.
+
+15.19 Known limits after phase 3
+"Ready for monitoring" means fingerprints are saved; no automatic web
+search runs yet (phase 4). CLIP cannot reliably tell a cropped copy from a
+similar-looking different photo (15.11). Uvicorn's auto-reload did not
+detect file changes in this OneDrive folder - restart the backend manually
+after code changes.
+
+
+
+--------------------------------------------------------------------------------
+16. PHASE 4 - DISCOVERY AND MATCHING (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+16.1 What was built
+On /protect, "Check a web page for your images": the user pastes a page or
+image link, Nivra visits it in the background, fingerprints every image in
+memory, compares them with the user's active protected images, and lists
+possible matches for the user to review. Confirmed matches can be added to
+a case with one click, which gives them a takedown notice.
+
+16.2 The key consequence of D13 (read this)
+Because Nivra never holds the original image, it can't send it to a
+reverse-image-search service (TinEye, Google Lens etc. all need the actual
+picture). So discovery works the other way round: Nivra visits pages and
+compares what it finds against fingerprints. Decision on external search:
+D18 (open).
+
+16.3 Provider interface (backend/app/discovery/providers.py)
+Every source of candidate images implements DiscoveryProvider.discover().
+Today there is one: UserSubmittedUrlProvider ("user_url"). Future sources
+(scheduled re-checks, a platform API, a licensed search service) are new
+classes registered in PROVIDERS; the job runner does not change. Providers
+that would need the original image are flagged and not allowed.
+
+16.4 The safe fetcher (backend/app/discovery/fetch.py)
+The only code that touches the web. Letting a server fetch user-supplied
+links is a classic attack route ("SSRF"): someone could point it at
+internal services or cloud-metadata addresses (169.254.169.254) to steal
+secrets. The fetcher is built to make that impossible.
+
+16.5 How SSRF is blocked
+The hostname is resolved first; if ANY address is private, loopback,
+link-local or reserved, the fetch is refused before anything is sent. The
+request then goes to that exact IP (with TLS still verifying the real
+hostname), so DNS can't be switched mid-request ("DNS rebinding").
+Redirects are followed by hand, max 3, re-checking every hop.
+
+16.6 Other fetch limits
+Only http/https on ports 80/443. 10-second timeouts. Pages max 2 MB,
+images max 15 MB, enforced while streaming. Images over 40 megapixels are
+refused ("decompression bombs"). Only JPEG/PNG/WebP/GIF/BMP are decoded;
+SVG is skipped (it can contain scripts).
+
+16.7 Being a good web citizen
+Our bot identifies itself ("NivraBot/0.1"), honours robots.txt (missing =
+allowed, server error = don't crawl), pauses 0.5 s between requests,
+stops on 401/403 (login walls) and 429 (slow down) and never tries to get
+around them - no logins, no CAPTCHA solving. Each account can run at most
+20 checks per hour.
+
+16.8 What happens to found images
+Candidate bytes exist only in memory while being fingerprinted, then are
+dropped. Only URLs, which protected image matched, the classification and
+the scores are saved - and only for exact/high/possible results. A
+different image leaves no trace. Tests check that no bytes are stored.
+
+16.9 Matching rules
+Same rules as section 15.10, against the user's ACTIVE images only - so
+"Pause monitoring" really pauses matching. A page checked again updates its
+existing matches instead of duplicating them, and keeps the user's review.
+
+16.10 Why the server has no AI embedding for candidates yet
+To compare embeddings, the server would need the exact same CLIP model as
+the browser (ONNX, same preprocessing). It is deferred: CLIP alone can only
+ever produce a "possible" (15.11), and a copy-detection model may replace
+it (15.12). Server matching uses SHA-256 and pHash today.
+
+16.11 Background jobs without Redis [DECIDED - D17]
+Jobs live in the discovery_jobs table and a worker claims the oldest
+queued one with a conditional UPDATE (so two workers can't take the same
+job). In development the worker runs as a thread inside the API; in
+production run "python -m app.discovery.worker". Stuck jobs are retried up
+to 3 times. Celery + Redis can replace this later behind the same API.
+
+16.12 Human in the loop
+Every match starts "pending". The user chooses "Yes, this is my image" or
+"No, not mine" (dismissed matches can be restored). Only confirmed matches
+can be added to a case, and adding one puts the PAGE URL (what platforms
+need) into the case as a link.
+
+16.13 Why found images are never shown
+Nivra doesn't keep them, and loading them straight from the site would
+reveal the user's visit (possibly to the person who posted them). The UI
+offers "Open the page in a new tab" with that warning, and suggests a
+trusted friend can check instead.
+
+16.14 Local testing override
+NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS=true lets the server fetch localhost /
+private addresses so you can test with a page on your own machine (use
+127.0.0.1 links). The server refuses to start in production with it on.
+
+16.15 Tested in the real browser
+A local test page with 4 images: the exact copy and the resized copy were
+flagged (exact, very likely), the different image left no record, and the
+missing image was counted as skipped. Confirming one and adding it to a new
+case put the page link into that case. In normal mode the same local page
+and the cloud-metadata address were both refused.
+
+16.16 Bugs testing caught
+An ftp:// link got a misleading "robots.txt" message because robots was
+checked before the scheme; and the metadata address was refused by the
+robots step instead of the "private network" rule. Both fixed: address and
+scheme checks now run first, before even robots.txt is requested.
+
+16.17 API added (backend/app/api/discovery.py)
+POST /api/discovery/jobs, GET /api/discovery/jobs, GET
+/api/discovery/jobs/{id}, GET /api/matches (?status_filter=), POST
+/api/matches/{id}/review, POST /api/matches/{id}/add-to-case.
+
+16.18 Tests (90 backend tests passing)
+Public/private IP rules incl. IPv6 and mapped addresses, SSRF refusals
+with nothing sent, pinning to the resolved IP, redirect re-checks, size
+caps, login walls, robots.txt, HTML extraction, decompression bombs, full
+jobs with a fake website, re-runs, paused images, failures, rate limits,
+review and add-to-case, cross-account isolation, deletion, the worker.
+
+16.19 Still not done after phase 4
+No automatic searching beyond pages the user gives (see D18). No scheduled
+re-checks (phase 7). No server-side embedding. The rate limiter and the
+inline worker are single-process (fine for development, not for scale).
+
+D17 [DECIDED 2026-11-15] Background jobs use a database-backed queue and a
+    simple worker, not Redis + Celery (yet).
+    Why: no Docker on the dev machine, low job volume, one less service to
+    secure. The worker module can be swapped for Celery later.
+
+D18 [OPEN 2026-11-15] How (or whether) to search the wider web.
+    Options: (a) stay fingerprint-only - user-submitted pages plus later
+    scheduled re-checks of known pages; (b) let a user explicitly send ONE
+    image to a licensed reverse-search API (e.g. TinEye, paid) from their
+    browser, an informed exception to D13; (c) apply to industry hash-
+    sharing programmes (StopNCII-style) as a partner. Team to decide.
+
+
+
+--------------------------------------------------------------------------------
+17. PHASE 5 - AI AGENTS (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+17.1 What was built
+Four agents, each a LangGraph graph (backend/app/agents): Discovery
+Coordinator, Verification Assistant, Complaint Generation and Follow-up.
+They appear on the website as an "Assistant" box per link, a "Deadlines and
+follow-ups" panel, "Explain this match" and "Plan re-checks of known pages".
+
+17.2 The one rule behind the design
+The assistant drafts, explains and plans. It never sends, submits, decides
+or declares anything. Every consequential step pauses until the user
+presses an approve button, and sending a notice is always the user's own
+action outside Nivra.
+
+17.3 Why LangGraph
+Each agent is a small graph of nodes (gather -> rules -> optional LLM ->
+approval -> apply). LangGraph's interrupt() pauses a graph mid-run for
+human approval, and its checkpointer saves the paused state so the run can
+be resumed later - even after a server restart (tested).
+
+17.4 LLM reasoning kept separate from app logic
+Facts, deadlines, legal grounds, deduplication and database writes are
+plain code. The LLM only writes or rewords text, inside one node, and its
+output is validated before anything uses it. Remove the LLM and every agent
+still works - with templates and rules.
+
+17.5 Works without an AI key (the default)
+NIVRA_LLM_PROVIDER=none (default) means no model is called; the agents use
+Nivra's templates and the UI says "AI drafting is switched off on this
+server". This machine has no Anthropic key, so the live demo runs in this
+mode. Set NIVRA_LLM_PROVIDER=anthropic and NIVRA_ANTHROPIC_API_KEY to use
+Claude.
+
+17.6 What the LLM is allowed to see
+Only the case type, the platform name, the legal grounds, match scores and
+deadline facts. Never the link, the user's name, image labels or any image.
+Drafts use placeholders ({{URL}}, {{NAME}}, {{DATE}}, {{SENT_DATE}}) that
+Nivra fills in afterwards, for the owner only. A test checks the prompts
+contain no link or name.
+
+17.7 Guardrails on every LLM output (backend/app/llm/guardrails.py)
+Notices must keep the placeholders, contain no links or emails of their
+own, and cite ONLY the sections and rules we supplied (an invented "Section
+420" is rejected). No threats, no claiming to be a lawyer, no guarantees.
+Explanations may not claim certainty, consent status or legality.
+
+17.8 Retries and fallback
+A rejected output is sent back to the model with the reasons, up to 3
+attempts. Retryable errors (rate limits, server errors) retry; others stop.
+If all attempts fail, the template is used and the UI says so. A crash in
+an agent is recorded as a failed run - the user just sees "try again".
+
+17.9 Agent 1 - Discovery Coordinator (no LLM, on purpose)
+Gathers pages worth checking: links the user gives, pages where they
+confirmed a match, and removed links (to catch re-uploads). Drops invalid
+links, duplicates and anything checked in the last 24 hours, and caps the
+plan at the hourly limit. Shows the plan; jobs are queued only after the
+user approves (selected items only).
+
+17.10 Agent 2 - Verification Assistant
+Explains a match from its scores: what the visual difference means, what
+evidence is worth gathering (screenshot with URL and date, uploader's
+account), and the next step. Always ends with: Nivra can't tell whether an
+image is yours or whether it was shared without consent - only you can.
+
+17.11 Agent 3 - Complaint Generation
+Loads the case (ownership checked), selects legal grounds by rule
+(backend/app/agents/legal.py, mirroring the website's notices), drafts with
+the LLM or the template, then pauses. Approve keeps it as the link's notice
+(shown with a copy button); Discard drops it. Approval never sends anything.
+
+17.12 Agent 4 - Follow-up
+Computes deadlines from the recorded history: overdue (24 h passed), due
+soon, no reply recorded (72 h+), refused, back online. Drafts follow-ups for
+overdue/refused links. Kept drafts are noted on the link's timeline, but
+the status is NOT changed: a prepared message is not a sent one, and sent is
+not resolved. Drafts never claim facts Nivra can't know.
+
+17.13 [SUPERSEDED by section 19 - now Gemini] Claude provider details
+Official Anthropic Python SDK (2.8.0), model claude-opus-5-5, adaptive
+thinking, effort "low" (configurable), JSON-schema structured output,
+server-side refusal fallbacks enabled (beta server-side-fallback-2026-07-01,
+fallbacks="default"). Errors map to safe codes with a retryable flag. A
+mocked-HTTP test checks the exact request shape.
+
+17.14 [SUPERSEDED by section 19] Swappable provider and Prune (D16)
+Agents only call get_llm().generate_json(). Prune is an optional provider
+(NIVRA_LLM_PROVIDER=prune) using the Anthropic SDK pointed at Prune's base
+URL, with fallbacks off. UNVERIFIED: Prune's docs don't confirm Messages API
+support or retention. Off by default.
+
+17.15 Maritime runtime (optional, D16)
+backend/app/agents/runtime.py has a MaritimeRuntime that calls Maritime's
+documented chat endpoint, and backend/app/agents/serve.py implements their
+custom-container contract (/health, /chat). It would also need database
+access from Maritime's VM - a deployment decision not yet made. Untested
+against the live service (no account). Off by default.
+
+17.16 Run records and logs
+Each run is an agent_runs row (status: awaiting_approval, completed,
+rejected, failed; which provider; whether the LLM was used; the output for
+the owner; a step log of node names and short codes - never content). The
+paused graph state lives in the LangGraph checkpoint DB (SQLite in dev,
+Postgres checkpointer recommended in production).
+
+17.17 Limits
+30 agent runs per account per hour (protects against runaway LLM cost).
+Runs execute during the request; with a real LLM a draft may take tens of
+seconds. Moving LLM runs to the background worker is a later improvement.
+
+17.18 API (backend/app/api/agents.py)
+GET /api/agents/status; POST /api/agents/complaint, /verification,
+/follow-up, /discovery; GET /api/agents/runs (?agent=&subject_id=), GET
+/api/agents/runs/{id}; POST /api/agents/runs/{id}/decision {approve|reject,
+approved_ids}.
+
+17.19 Tests (115 backend tests passing)
+Template path and approval; LLM path with prompt-privacy check; invented
+law rejected then fixed; always-invalid output falls back; auth / refusal /
+rate-limit errors; crash recorded as failed; restart recovery of a paused
+run; cross-account isolation; verification guardrail; follow-up deadlines
+and approval; coordinator dedupe/limits/approval/rejection; guardrail
+units; Claude request shape and error mapping (mocked HTTP).
+
+17.20 Tested in the browser (template mode)
+Prepared and approved a notice on a real case; "Check deadlines" found the
+overdue link, drafted a follow-up with the real link and date, and keeping
+it added a history note without changing the status; "Explain this match"
+and the re-check planner (which correctly skipped a recently checked page).
+
+17.21 Not verified
+No real Claude call was made (no API key on this machine) - the request
+shape is verified by a mocked test only. Prune and Maritime adapters are
+untested against the live services.
+
+D19 [DECIDED 2026-11-15] Agents are LangGraph graphs with deterministic
+    nodes and at most one LLM node each; consequential steps use interrupt()
+    and resume only on the user's decision.
+    Why: predictable, testable, and humans stay in control.
+
+D20 [DECIDED 2026-11-15] AI drafting is off by default and works from
+    placeholders; the model never sees links, names or images.
+    Why: privacy first; the product must work without any AI provider.
+
+D21 [DECIDED 2026-11-15] The Discovery Coordinator uses no LLM.
+    Why: deciding which sites to visit must be rule-based and explainable.
+
+
+
+--------------------------------------------------------------------------------
+18. PHASE 6 - INCIDENTS, COMPLAINTS AND EVIDENCE (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+18.1 What was built
+A Dashboard (/dashboard) that brings everything together; complaints with
+a full lifecycle per link; an encrypted evidence locker per case; a case
+timeline; and a richer, shared platform directory.
+
+18.2 The Dashboard
+Shows protected images, active monitoring, matches found and waiting for
+review, cases, notices drafted, complaints sent, waiting for a reply and
+removed - plus a "Needs your attention" list (matches to review, approvals
+waiting, replies pending) and every case with an Open button. It replaces
+"My case" in the menu; each case opens from there.
+
+18.3 One platform file for website and backend [DECIDED - D22]
+shared/platforms.json is the single source of truth. The backend reads it;
+the website copies it into web/src/data before every dev/build
+(scripts/sync-platforms.mjs). A backend test fails if the two copies ever
+differ, so they can't drift apart silently.
+
+18.4 What each platform entry defines
+Name, domains, deadline (hours), reporting mechanisms (form / email /
+in-app, with targets), what the platform will ask for, evidence to have
+ready, step-by-step submission instructions, and how the user hears back
+(email / in-app / ticket / none). Each has verified=false and
+last_verified=null until a person checks it; the guide pages say so.
+
+18.5 Complaint lifecycle [DECIDED - D23]
+draft_generated -> user_approved -> submitted_by_user ->
+submission_confirmed -> response_received -> resolved | rejected (plus
+discarded for dropped drafts). The server enforces the order. Only the user
+records submission and outcomes - Nivra never claims a complaint was sent,
+received or resolved on its own.
+
+18.6 How complaints are created
+Two ways: "Use this notice" on Nivra's template, which starts at "Approved
+by you"; or the assistant, whose draft is a complaint in "Draft generated"
+- approving it in the Assistant box moves it to "Approved by you",
+discarding moves it to "discarded" (hidden). Platform, reference/ticket
+number and where it was sent are recorded.
+
+18.7 Complaints keep link statuses in step
+"Submitted by you" marks the link as reported (starting its 24-hour clock),
+"Removed / resolved" marks it removed, "Rejected" marks it refused - but
+only where the link's own status rules allow that move. Each also adds a
+line to the link's history.
+
+18.8 The case timeline
+One newest-first list per case: link changes, complaint steps, evidence
+added (kind only - never content) and matches added from discovery. A
+complaint step is shown once, not again as its mirrored link entry (a
+duplicate bug found in browser testing and fixed, with a test).
+
+18.9 The evidence locker (decision D9 fulfilled) [DECIDED - D24]
+Per case: screenshots, files, notes, the uploader's account, messages.
+Everything is encrypted IN THE BROWSER before upload; the server stores
+ciphertext it cannot read. It knows only each item's kind, size, case and
+time. Nivra cannot open it, and can't recover it if the passphrase is lost.
+
+18.10 How the locker's encryption works
+Key = PBKDF2-SHA256 (600,000 rounds) of the passphrase + a random salt, as
+a non-extractable AES-GCM 256-bit key held in memory for that page only.
+Each item and its description are encrypted with AES-GCM and a fresh
+12-byte IV. A known "key check" value encrypted at setup lets the browser
+reject a wrong passphrase. Lock, closing the tab or Quick exit forgets the key.
+
+18.11 Locker storage and deletion
+Ciphertext files live in NIVRA_EVIDENCE_DIR (never web-served), named by
+random IDs, created with owner-only permissions. Max ~7 MB per file,
+200 MB per account. Deleting an item, a case or the whole account deletes
+the files on disk too (database cascades alone wouldn't).
+
+18.12 Evidence report
+"Download evidence report" builds an HTML file on the user's device: case
+type, every link with its history, complaints with their steps and
+references, and each saved item with its description and the SHA-256
+fingerprint of the original file. It doesn't include the images.
+
+18.13 Verified in the browser
+Template notice -> "I've submitted it" (with a ticket number) -> "It's been
+removed": the link went from "Not reported yet" to "Waiting for reply" to
+"Removed". Locker: set up, saved a note and a PNG; the server held 1,579
+bytes for a 1,551-byte PNG (IV + auth tag), with no PNG signature and no
+readable text; the screenshot decrypted back to the original; a wrong
+passphrase was refused; the report contained the links, hashes and notes.
+
+18.14 Problems found while testing
+The duplicate timeline entries (18.8). The Next.js dev server kept serving
+an old CSS bundle after edits - file watching is unreliable inside this
+OneDrive folder; fixed by deleting web/.next and restarting. If the site
+looks out of date: stop the dev server, delete web/.next, start it again.
+
+18.15 API added
+Complaints: GET /api/cases/{id}/complaints, POST /api/links/{id}/complaints,
+POST /api/complaints/{id}/status, DELETE /api/complaints/{id}. Timeline:
+GET /api/cases/{id}/timeline. Overview: GET /api/overview. Platforms: GET
+/api/platforms, /api/platforms/{id}. Evidence: GET/POST /api/evidence/locker,
+GET/POST /api/cases/{id}/evidence, GET /api/evidence/{id}/blob, DELETE
+/api/evidence/{id}.
+
+18.16 Tests (133+ backend tests passing)
+Shared platform file in sync and complete; complaint lifecycle and link
+updates; no skipping steps; no discarding after sending; rejection; hidden
+discards; assistant drafts become complaints; privacy; locker setup once;
+payload rules; server stores exactly the ciphertext; size limit; file
+removal on item/case/account delete; evidence privacy; cross-case links
+refused; timeline order and de-duplication; overview counts.
+
+18.17 Limits and open points
+Platform details are still unverified prototype data. The locker uses the
+account passphrase; changing a passphrase (not built yet) would need
+re-encrypting the locker. Evidence of under-18 images must never be stored
+- the under-18 route stops before any case exists, but encrypted files
+can't be inspected, so this relies on that route and the terms of use.
+
+D22 [DECIDED 2026-11-15] shared/platforms.json is the single platform
+    directory for website and backend, checked for drift by a test.
+
+D23 [DECIDED 2026-11-15] Complaints have their own lifecycle; only the user
+    records submission and outcomes, and complaint steps drive link status.
+
+D24 [DECIDED 2026-11-15] Evidence is encrypted in the browser (PBKDF2 +
+    AES-GCM) and stored as ciphertext; Nivra holds no key and cannot read
+    or recover it.
+
+
+
+--------------------------------------------------------------------------------
+19. SWITCH TO GOOGLE GEMINI (2026-11-15)
+--------------------------------------------------------------------------------
+
+19.1 What changed
+The agents' language model is now Google Gemini, model
+"gemini-3.1-flash-lite", at the team's request (D25). The Claude provider
+and the Anthropic SDK were removed. Sections 17.13 and 17.14 (Claude and
+Prune) are superseded by this section.
+
+19.2 How it's wired (backend/app/llm/gemini_provider.py)
+Official Google Gen AI SDK (google-genai 3.3.0). Each call sends a system
+instruction, the prompt, response_mime_type "application/json" and a JSON
+schema (response_json_schema), with an output-token limit. The reply is
+parsed and then checked by the same guardrails as before (17.7).
+
+19.3 Errors and blocks
+Rate limits (429) and server errors retry; a bad key, a wrong model name
+(404) or a bad request stop and fall back to the template. A safety block
+(finish reason SAFETY / PROHIBITED_CONTENT etc.) is treated like a refusal
+and the template is used; a truncated reply (MAX_TOKENS) retries.
+
+19.4 Turning it on
+Put GEMINI_API_KEY=... (or NIVRA_GEMINI_API_KEY) in backend/.env and
+restart the API. NIVRA_LLM_PROVIDER defaults to "gemini"; without a key the
+agents quietly use templates and rules, exactly as before. Set
+NIVRA_LLM_PROVIDER=none to never call a model. backend/.env is git-ignored.
+
+19.5 What Gemini sees - unchanged
+Only the case type, platform name, legal grounds, match scores and deadline
+facts, with placeholders for links, names and dates. Never links, names,
+image labels or images (17.6). Note that Google's own data-use terms for
+the Gemini API now apply to those prompts; check them for the plan in use.
+
+19.6 Tests
+Tests never call the real model, even when backend/.env holds a key
+(conftest forces NIVRA_LLM_PROVIDER=none). Mocked-HTTP tests check the exact
+Gemini request (URL with the model name, system instruction, JSON mime type
+and schema, token limit) and the mapping of SAFETY, MAX_TOKENS, 429 and 404.
+134 backend tests pass with the Anthropic SDK uninstalled.
+
+19.7 Verified live (2026-11-15)
+With the team's key in backend/.env: a direct call returned valid JSON in
+2.1 s; in the app, "Prepare a notice" produced a Gemini draft in 8 s that
+passed every guardrail on the first attempt (it cited only the supplied
+rules and sections); the stored draft held {{URL}}, not the link, proving
+the model never saw it. "Explain this match" also passed its checks.
+
+19.8 Prune
+The optional Prune adapter was built on the Anthropic SDK and was removed
+with it. Prune documents an OpenAI-compatible endpoint, not Gemini's own
+API, so re-adding it would need a separate adapter (not planned).
+
+D25 [DECIDED 2026-11-15] The LLM provider is Google Gemini
+    (gemini-3.1-flash-lite) via the official google-genai SDK; Claude and
+    the Prune adapter are removed. Supersedes the provider parts of D16.
+    Why: team decision.
+
+
+
+--------------------------------------------------------------------------------
+20. PHASE 7 - MONITORING AND NOTIFICATIONS (built 2026-11-15)
+--------------------------------------------------------------------------------
+
+20.1 What was built
+Scheduled re-checks of pages the user chooses to watch, automatic deadline
+reminders, in-app updates (an "Updates" link with an unread count, and an
+Updates page), optional discreet emails, and a Settings page with every
+monitoring and notification control.
+
+20.2 The rule behind it
+Nivra notices; the user decides. A page that stops loading "may have been
+removed"; an image that reappears "may be back". Nivra never marks a link
+removed, resolved or back online by itself - tested in the browser (the
+link stayed "removed" after a re-check found the image again).
+
+20.3 Watching a page [DECIDED - D26]
+Re-checks happen ONLY for pages the user explicitly watches ("Watch this
+page" on a case link, or a link added in Settings). Turning watching on is
+the user's standing approval for those visits - the same way approving a
+plan works for one-off checks (17.9). Each watch can be paused, re-timed
+(every 12 hours, daily, every 3 days, weekly) or stopped.
+
+20.4 How a re-check runs
+The worker's scheduler tick (every 60 s by default) queues a normal
+discovery job for each due watched page, using the same safe fetcher as
+user-started checks (SSRF guard, robots.txt, limits - section 16). It skips
+pages already being checked, respects the user's hourly limit, and does
+nothing while the user's master switch "Keep re-checking" is off.
+
+20.5 What turns into an update
+After a scheduled check: page returns 404 -> "no longer loads, may have
+been removed"; a match on a link the user marked removed -> "may be back";
+new possible matches -> "possible match to review"; a page that loads again
+after being gone -> "loads again". Checks the user starts themselves don't
+create updates (they see the result directly).
+
+20.6 Deadline reminders
+The scheduler also scans reported links: one "Deadline soon" reminder when
+a platform's 24-hour window is nearly up, then at most one "Deadline passed"
+per link per day until the user records an outcome. Same rules as the
+Follow-up agent (17.12).
+
+20.7 No repeats
+Every update has a dedupe key (e.g. "overdue:<link>:<date>"), unique per
+account in the database, so a tick that runs twice can't create the same
+update twice.
+
+20.8 Controls (Settings page)
+Master switch for monitoring; the list of watched pages with interval,
+pause and stop; which kinds of update to receive (matches, page changes,
+deadlines); and email: never, when there's an update, or at most once a day.
+
+20.9 Discreet email [DECIDED - D27]
+Emails say only "You have an update from Nivra - sign in to see it", never
+a site, a link or what happened, because someone else may see the user's
+inbox. The address is stored encrypted (14.11); removing it switches email
+off. Delivery is "console" in development (logged, not sent) or SMTP in
+production (NIVRA_EMAIL_BACKEND=smtp plus NIVRA_SMTP_* settings).
+
+20.10 Local setup note
+Optional email needs NIVRA_DATA_KEY (the key that encrypts addresses); a
+local one was generated into backend/.env during testing. Without it, the
+server refuses to store emails rather than keep them unencrypted.
+
+20.11 Verified in the browser
+"Watch this page" on a case link; within one scheduler tick the page was
+re-checked, an image matching a protected one was found on a link marked
+removed, and the update "A removed page ... may be back" appeared, with the
+header showing the unread count; the link's status was not changed; the
+next check was set 24 hours later. A deadline reminder for an overdue link
+appeared on its own. Settings: email added (encrypted), immediate emails
+chosen, mark-all-read worked.
+
+20.12 Problems found while testing
+A test helper treated an empty fake website as "use the default site", so
+the "page disappeared" test passed for the wrong reason at first - fixed by
+giving it a site that really lacks the page. Adding an email failed until
+NIVRA_DATA_KEY was set (working as designed, 20.10).
+
+20.13 API added (backend/app/api/monitoring.py)
+GET/POST /api/watch, PATCH/DELETE /api/watch/{id}; GET /api/notifications,
+GET /api/notifications/unread-count, POST /api/notifications/{id}/read,
+POST /api/notifications/read-all; GET/PATCH /api/settings/notifications.
+
+20.14 Tests (152 backend tests passing)
+Watch create/validate/de-duplicate/update/delete and privacy; due checks
+queued once and rescheduled; paused watches and the master switch; hourly
+limit; match / page gone / page back updates; user-started checks don't
+notify; turned-off kinds; deadline reminders once per day; read and
+read-all; email needs an address; immediate emails contain no details;
+daily digest once a day; account deletion removes everything.
+
+20.15 Limits
+Scheduled checks only see pages the user lists (see D18 on wider search).
+The scheduler runs inside the worker; with several workers in production,
+run exactly one scheduler (or move to a proper scheduler) to avoid
+duplicate queueing - the dedupe keys stop duplicate updates, but not
+duplicate visits. No push notifications or SMS.
+
+D26 [DECIDED 2026-11-15] Scheduled re-checks run only for pages the user
+    explicitly watches; watching is standing approval, always pausable.
+D27 [DECIDED 2026-11-15] Notification emails carry no details at all;
+    everything is read inside Nivra after signing in.
+
+
+
+--------------------------------------------------------------------------------
+21. PHASE 8 - PRODUCTION READINESS (2026-11-15)
+--------------------------------------------------------------------------------
+
+21.1 What was done
+A security review with automated scanners, dependency upgrades, request
+hardening, website security headers, data retention, health and
+readiness checks, structured logs, verification on PostgreSQL, deployment
+files, website tests, an end-to-end smoke test, a privacy review and a
+launch checklist. Deployment steps: deploy/DEPLOYMENT.md.
+
+21.2 Dependency audit - the biggest finding
+pip-audit found 101 known vulnerabilities in the backend's pinned packages:
+Pillow (77), Starlette under FastAPI (14) and cryptography (10). Pillow
+mattered most: it decodes images fetched from untrusted websites during
+page checks. Every package was upgraded to its current release (Pillow 13,
+FastAPI 0.163 / Starlette 1.10, cryptography 50, SQLAlchemy 2.1 ...);
+pip-audit now reports none, and all tests still pass.
+
+21.3 Side effect caught by the schema check
+SQLAlchemy 2.1 maps Python float to a different SQL type than before, so
+Alembic's check reported a column change. Fixed by naming the type
+explicitly on that column - the schema and migrations match again.
+
+21.4 Website dependencies
+npm audit: 0 vulnerabilities in what ships to users. 8 moderate findings
+are in the developer lint tooling (a pattern-matching library inside
+ESLint) and never reach production; npm's suggested fix would downgrade the
+lint config to an older Next.js line, so this is accepted as dev-only risk.
+
+21.5 Static analysis
+Bandit (Python security scanner) found only one low-severity, intentional
+case (ignoring malformed HTML while collecting image links).
+
+21.6 Request hardening (backend/app/core/hardening.py)
+Writes from another website's pages are refused (Origin check, on top of
+SameSite cookies); requests over 15 MB are refused before being read;
+every response carries an X-Request-ID that logs share, so a problem can be
+traced without logging content; login is also throttled per Nivra ID (20
+attempts/hour), not only per IP.
+
+21.7 Production refuses unsafe settings
+On top of the earlier checks (Secure cookies, prototype tools off,
+PostgreSQL, no private-host fetching), production now also requires
+NIVRA_DATA_KEY, https-only allowed origins and absolute data paths. Tests
+cover each refusal.
+
+21.8 Website security headers (web/next.config.ts)
+A Content Security Policy (scripts and data only from Nivra itself, plus
+Hugging Face and jsDelivr for the optional on-device AI model), no framing,
+no referrer sent to other sites, camera/microphone/location blocked, HTTPS
+enforced (HSTS) in production, and the "X-Powered-By" header removed.
+
+21.9 The policy that broke the AI model
+Browser testing showed the first policy blocked the on-device AI
+fingerprint: ONNX Runtime starts part of itself from a blob: URL. blob:
+scripts were allowed (only Nivra's own page can create them) and the AI
+check works again with zero policy violations, in dev and production.
+
+21.10 Agent state now deleted with the account
+LangGraph keeps paused agent runs in a separate checkpoint database. Before
+this phase, deleting an account left that saved state behind (drafts with
+placeholders, case type, platform). Account deletion now removes it too;
+a test proves it.
+
+21.11 Data retention (backend/app/services/retention.py)
+Once a day the worker deletes: audit events older than 365 days, read
+updates older than 90 days, finished page checks older than 180 days, and
+finished agent runs (with their saved state) older than 180 days - all
+configurable. Users' cases, evidence and protected images are never
+auto-deleted; only the user deletes them.
+
+21.12 Health, readiness and logs
+/api/health = the process is up; /api/ready = the database answers,
+evidence storage is writable and the platform file loads (503 otherwise).
+NIVRA_LOG_FORMAT=json gives one JSON line per event with its request ID.
+Logs hold methods, routes, status codes and error types - never content.
+
+21.13 Launch checklist - NOT done, needs people
+1. Verify every platform entry on the platform's own site; set verified
+   and last_verified (shared/platforms.json).
+2. A lawyer reviews the notice templates and legal grounds.
+3. Terms of use and a privacy policy, incl. India's DPDP Act duties.
+4. A legal entity / operator and a grievance contact for Nivra itself.
+5. Partner NGO and helpline numbers re-checked.
+6. An independent penetration test before public launch.
+7. Choose hosting, set up backups, uptime monitoring and alerting.
+8. Configure real email (SMTP) and test deliverability.
+9. Decide D18 (wider search) and plan CSAM-hash checks for fetched images.
+10. Build and smoke-test the Docker stack on the target server.
+
+21.14 Verified in this phase
+168 backend tests on SQLite and on real PostgreSQL (embedded server via
+pgserver; all 6 migrations applied and the schema matched). 8 website
+encryption tests + 6 shared pHash vectors (npm test). The production
+website build and standalone server: all pages 200, headers present, API
+proxy and readiness OK. The end-to-end smoke test: 14/14 through the
+website proxy. 0 known vulnerabilities in shipped dependencies.
+
+21.15 Not verified
+The Docker images and docker-compose stack were written and reviewed but
+not built here (Docker isn't installed on this machine). No penetration
+test, load test or real SMTP delivery. Windows/OneDrive note: the dev server
+sometimes needs web/.next deleted and a restart (18.14); once a Turbopack
+helper process failed to start (0xc0000142) and a clean restart fixed it.
+
+21.16 Privacy review - what Nivra stores, and how
+Account: Nivra ID; passphrase as an Argon2id hash; optional email
+encrypted (Fernet). Sessions: SHA-256 of the token only. Cases and links:
+URLs, statuses and history in plain form (the server must read them to
+re-check pages). Protected images: no images - fingerprints only, made in
+the browser. Evidence: ciphertext only; the key never leaves the browser.
+Candidate images found online: never stored. Notifications: short text with
+host names, not full links. Audit trail: actions and IDs, no content, kept
+365 days. LLM: Gemini receives case type, platform and legal grounds only.
+
+21.17 Privacy review - known residual risks
+Links and case history are readable by anyone who controls the server
+(needed for monitoring) - protect the server and database accordingly.
+Fingerprints and embeddings could leak some visual features (13.9). The
+optional email reveals that the person uses Nivra to whoever reads it.
+Gemini prompts fall under Google's API data terms.
+
+D28 [DECIDED 2026-11-15] Dependencies are audited (pip-audit, npm audit,
+    bandit) before every release; shipped dependencies must have no known
+    vulnerabilities.
+D29 [DECIDED 2026-11-15] Deployment is four containers (PostgreSQL, API,
+    exactly one worker, website) behind a TLS reverse proxy; the API
+    refuses to start with unsafe production settings.
+
+========================================================================
+22. THE "MIDNIGHT" REDESIGN, PHOTO-FIRST CASES, LIVE SCANS, AUTO-SEND
+========================================================================
+
+22.1 Why this phase happened
+After Phase 8 the owner tried the site as a user and judged it generic:
+pale colours, text-heavy, "chatbot-like". Three real gaps came out of it:
+Start a case never asked for the photo, the impressive part (scanning
+pages and matching fingerprints) was invisible, and sending was manual.
+
+22.2 Design system: "Midnight" (web/src/app/globals.css)
+Chosen by the owner: dark and cinematic. Near-black blue background
+(#05070d), glass-like surfaces, luminous teal (#3ef0c8) and violet
+(#8a7dff) accents, coral (#ff8a70) for warnings and matches. Fonts: Syne
+(headings), Manrope (text), JetBrains Mono (fingerprints and hashes).
+
+22.3 Every old class name was kept
+All pages are built from shared classes (btn, well, field, badge, rows...).
+The stylesheet was rewritten but those names kept, so every page took the
+new look at once without touching its code. New classes were added for
+the landing, the scan view and the photo dropzone.
+
+22.4 Motion libraries, and the rules for them
+GSAP (scroll reveals, page transitions, backdrop drift), Three.js (the hero
+fingerprint), anime.js (bit grids, counters). Every animation stops under
+prefers-reduced-motion, and content is visible without JavaScript: scripts
+only animate FROM hidden, never hide by default. The page transition is a
+short fade (a blur version lingered on slow frames and was dropped).
+
+22.5 The landing hero: a fingerprint made of light
+components/motion/FingerprintHero.tsx draws about 14,000 points as
+fingerprint ridges, with a scan wave passing through them - a picture of
+what Nivra does. It pauses off-screen, falls back to nothing without WebGL,
+and renders one still frame for reduced motion. Below it: the 4-step
+pipeline with real-looking bit grids, a feature grid and the privacy facts.
+
+22.6 Photo step in Start a case (app/start/StartWizard.tsx)
+New step 3: "Add the photo". It is fingerprinted on the device (same code
+as Protect), the person confirms they are the subject or authorised (the
+under-18 question already came first), and only fingerprints are sent.
+"I don't have it" skips it; the old link-only flow still works.
+
+22.7 Links are checked automatically
+With a photo, the links step offers "Check these pages now" (on by default)
+and "Keep watching them" (off by default). Saving registers the photo,
+creates the case, starts a discovery job per link and optional watches. A
+link that can't be checked is listed with the reason; it doesn't fail.
+
+22.8 The live scan view (components/scan/ScanView.tsx)
+Shows a scan as it happens: stages (opening the page, fingerprinting,
+done) and one card per image with "your photo" vs "found here" bit grids,
+differing bits in coral, a similarity bar and the verdict. Used on the
+Start "done" screen, on Protect, and by the demo.
+
+22.9 Where the scan data comes from (scan_log)
+DiscoveryJob gained `stage` and `scan_log` (migration a7cec631ef6d). The
+worker appends one entry per image: its URL, its pHash, the result, the
+distance and the XOR "diff" against the closest protected photo, and
+commits after each one so the browser can poll every second.
+
+22.10 Real scans never show the found images
+The scan view loads no third-party images: that would reveal the user's
+visit to the site and could show them the abusive image again. Only
+hashes, host names and file names are shown. Only the demo shows pictures,
+because they are Nivra's own sample images.
+
+22.11 The demo (/demo, app/demo/DemoView.tsx)
+Runs the REAL fingerprint code in the browser. Candidates are the protected
+photo plus four edits made on a canvas (cropped, filtered, shrunk and
+recompressed, captioned) and three unrelated samples. Edits match,
+unrelated photos don't. "Try my own photo" does the same with the
+visitor's photo, which never leaves the device.
+
+22.12 Demo sample images
+web/public/demo/*.jpg are procedurally drawn scenes (lake, city, forest,
+sea): no people and no real photos, so nothing sensitive is shipped and
+there are no rights issues. The demo uses the backend's thresholds (6 and
+12 bits).
+
+22.13 Automatic sending: one approval, then it sends
+Chosen by the owner. "Approve & send" (on the template and on the
+assistant's draft) approves the notice and immediately emails it - no
+second click. Nothing is ever sent without that approval. New complaint
+status: sent_by_nivra ("Sent by Nivra"), which marks the link as reported.
+
+22.14 Who the notice goes to (backend/app/services/sending.py)
+Platforms in shared/platforms.json: their listed email channels. Sites
+not in the directory: the abuse contact of the company hosting the site,
+found through RDAP (rdap.org, the public registry that replaced WHOIS).
+Only the site's IP address is sent to rdap.org, and lookups are cached.
+
+22.15 Platforms that only take their own form
+Instagram, TikTok, X and others accept reports only through their own
+forms, which no outside service may fill in automatically. For those,
+Nivra copies the notice and opens the form; the person pastes it and marks
+it submitted. This is a platform limit, not a missing feature.
+
+22.16 Replies and limits
+The sent email's Reply-To is the person's own email if they saved one, so
+platforms answer them directly; otherwise Nivra's address is used. At most
+30 sends per account per day. In development (email backend "console")
+the send is logged, not delivered, and the history says so.
+
+22.17 Phones keep Quick exit on screen
+At phone width the header drops the wordmark text and the word "Updates"
+(its count and label stay for screen readers) so Quick exit is always
+visible: it is a safety control, not decoration.
+
+22.18 Verified
+Backend: 177 tests pass (new: 8 for sending, 1 for the scan log; one
+lifecycle test updated for the new status). Web: unit tests, pHash
+vectors, tsc and eslint pass. In the browser: landing, demo scan, Start
+with photo -> live scan (a blocked site reported clearly), a real scan of
+a public image, and Approve & send finding abuse@wikimedia.org via RDAP.
+
+22.19 Not verified
+Real email delivery to a platform (needs SMTP and a real case). The
+scanner only works on public pages that allow automated visits; many big
+sites (Wikipedia included) refuse, and those links are reported manually.
+
+D30 [DECIDED 2026-11-15] Dark "Midnight" design with GSAP, Three.js and
+    anime.js; all motion respects reduced-motion and content never depends
+    on JavaScript to be visible.
+D31 [DECIDED 2026-11-15] One approval, then Nivra emails the notice
+    itself (platform channels, else the host's RDAP abuse contact);
+    form-only platforms get copy-and-open instead.
+D32 [DECIDED 2026-11-15] Start a case asks for the photo (fingerprinted on
+    the device) and checks the links for it automatically; skipping it is
+    allowed.
+D33 [DECIDED 2026-11-15] Scans are shown live from a per-image scan log;
+    real scans show only hashes, never the found images. A /demo runs the
+    real matching on sample images in the browser.
+
+========================================================================
+23. CHECK FIRST, THEN DRAFT; WHERE MAIL GOES; DEMO SITES FOR THE MENTOR ROUND
+========================================================================
+
+23.1 Why
+The owner couldn't see where "Approve & send" emails went, and wanted the
+product to behave intelligently: check whether the photo is really on each
+shared link, THEN draft the notice from what was found. With the mentor
+round coming, demos also had to work every time.
+
+23.2 Bundled demo sites (backend/app/demo_sites)
+Real sites often refuse automated visits, so a live demo could fail. Five
+fake sites under the reserved .test domain (it can never be a real site)
+are served from files straight to the REAL scanner: snapgram.test (edited
+copy), chatforum.test (captioned, shrunk copy), imgdump.test (exact copy),
+travelblog.test (a different lake photo) and privategroup.test (blocked).
+
+23.3 Why "hardcoded" runs are still honest
+Only the web pages are bundled. Fingerprinting, comparison, the scan log,
+Gemini's drafting and sending all run for real, so results vary if the
+photo varies. The copies are edits of web/public/demo/protected.jpg (a
+drawn scene, no people). Expected results: strong (6 bits), possible (10),
+exact, no match (30) and blocked. Rebuild: backend/scripts/make_demo_sites.py.
+
+23.4 Demo sites are off in production
+NIVRA_ENABLE_DEMO_SITES (default true in development) makes the API refuse
+to start in production, like the other prototype switches. Only the five
+listed hosts are served; any other .test address goes through the normal
+safe fetcher. GET /api/demo lists them for the UI.
+
+23.5 Scans belong to case links
+DiscoveryJob gained case_link_id (migration a817e86239d3). Start a case
+creates one check per link, tied to it. GET /api/cases/{id}/scans gives
+each link's latest result, shown on the case page as "What Nivra found",
+with a "Check this page for my photo" button for links added later.
+
+23.6 Check first, then draft (app/agents/service.py auto_draft_for_job)
+When a link's check finishes, the backend decides: photo found -> the
+assistant drafts the notice; page couldn't be checked (login wall) -> it
+drafts anyway but claims nothing was verified; photo NOT found -> no draft,
+the user decides. Links that already have a notice are never re-drafted.
+
+23.7 The scan becomes the notice's evidence
+The complaint agent's gather step reads the link's latest check and adds
+one evidence sentence: how many images were examined, how many matched,
+and how close ("an exact copy" or "differs in only 6 of 64 points"). Gemini
+gets only these numbers - never the image, the URL or the user's name.
+
+23.8 Where mail goes, shown everywhere
+Before and after sending, an envelope shows From (NIVRA_SMTP_FROM), To
+(platform address or the host's abuse desk), Reply-To (the user's own email
+if saved) and Subject, plus "View the email exactly as sent". It also says
+plainly whether the email was delivered, logged (development) or redirected.
+
+23.9 The From address
+Development default: "Nivra Notices (development) <notices@nivra.test>",
+which can't deliver anywhere on purpose. In production NIVRA_SMTP_FROM must
+be an address on a domain Nivra controls, with SPF/DKIM set up, or
+platforms will treat the notices as spam.
+
+23.10 Demo redirect: watch real emails arrive
+NIVRA_EMAIL_REDIRECT_TO=<your inbox> (with SMTP settings) delivers EVERY
+outgoing notice to that inbox instead, with "[DEMO for abuse@...]" in the
+subject and the intended recipient at the top. Lets the mentors see a real
+email land without contacting anyone. Refused in production.
+
+23.11 Demo thumbnails only
+The scan view shows pictures only for the demo sites (their own drawn
+images, via /api/demo/image, which serves nothing else). Real scans still
+show only fingerprints (22.10).
+
+23.12 Mentor-round script (about 3 minutes)
+1. Landing: the fingerprint hero, then "See it work" for the in-browser demo.
+2. Start a case: adult -> intimate -> "Use the demo photo" (watch its
+   fingerprint appear) -> confirm -> "Fill the demo links" -> skip proof ->
+   passphrase -> Create.
+3. Watch five live scans: strong, possible, exact, not found, blocked.
+4. "Review the drafted notices": each link shows what was found and
+   Gemini's draft citing it; travelblog has no draft (not your photo).
+5. "Approve & send" one: the envelope shows From/To/Reply-To; open "View
+   the email exactly as sent". (Optional: redirect to your inbox, 23.10.)
+
+23.13 Verified
+Backend: 185 tests pass (new: 6 demo-flow tests covering demo serving,
+thumbnails, the full check-then-draft flow, ownership, sender details and
+the redirect; production-config tests extended). In the browser: the whole
+script above, with live Gemini drafts that included the evidence sentence.
+
+23.14 Not verified
+Real SMTP delivery and the redirect against a real inbox (needs the
+owner's SMTP settings). Gemini sometimes wrote one long paragraph; the
+prompt now asks for short paragraphs, not yet re-checked live.
+
+D34 [DECIDED 2026-11-15] Demonstrations use five bundled .test sites read
+    by the real scanner (development only), not a scripted playback.
+D35 [DECIDED 2026-11-15] Check first, then draft: a finished check of a
+    case link triggers the assistant's draft only when the photo was found
+    (or the page couldn't be checked); the scan result is the evidence.
+D36 [DECIDED 2026-11-15] Every send shows From, To, Reply-To and delivery
+    mode; NIVRA_EMAIL_REDIRECT_TO lets a demo deliver to the presenter.
+
+========================================================================
+24. SCRIPTED DEMO PAGES (A BLOCKED REAL LINK, SERVED FROM A LOCAL COPY)
+========================================================================
+
+24.1 Why
+For the judges, the owner wanted a well-known real link (a News18 photo
+gallery) to show a match with a photo of theirs. News18 answers automated
+visitors with "403 forbidden", so a live check is impossible. The owner
+will tell the judges this one result is hardcoded because a real-browser
+fetcher (e.g. Playwright) wasn't added in time.
+
+24.2 How it works (backend/app/demo_sites/scripted.py)
+backend/demo_scripts/scripts.json lists page URLs and local image files.
+When one of those URLs is checked, the fetcher serves a local page made of
+those images instead of contacting the site. Everything after that is real:
+fingerprints, comparison, scan log, evidence, Gemini's draft.
+
+24.3 Only the right photo matches
+Because the comparison is real, only a photo that is actually in the local
+copy matches; any other photo gets "not your photo". For the News18 page the
+copy is the owner's photo, lightly cropped, brightened and recompressed:
+4 of 64 bits differ, shown as "94% similar".
+
+24.4 Kept out of GitHub
+backend/demo_scripts/ is git-ignored: it holds a news photographer's photo
+and a celebrity's image, which must not be published in the repository.
+Without the folder, nothing is scripted. Tests use a temporary folder.
+
+24.5 Disclosed on screen, and can't reach the real site
+Every scan entry from a scripted page is marked "scripted" in the data. The
+on-screen label was removed at the owner's request; the owner discloses it
+to the judges verbally. Real email delivery for that link is still refused
+(development logging and the demo redirect still work).
+
+24.6 Only in development
+Scripted pages follow NIVRA_ENABLE_DEMO_SITES, which the API refuses in
+production. Their image thumbnails come from the local files through
+/api/demo/image, which serves nothing else.
+
+24.7 Match strength as a percentage
+Matches now also show similarity as a percentage: (64 - differing bits) /
+64, so 4 bits = 94%. Shown only for matches: two unrelated photos always
+share about half their bits, and "53% similar" would mislead.
+
+24.8 About Playwright
+A real-browser fetcher MIGHT get past News18's block, but sites like it
+often detect automated browsers too, and getting around a site's bot block
+is a choice with terms-of-service risk. It is not a guaranteed fix.
+
+24.9 Verified
+4 new tests (served and really matched; other photos don't match; real
+delivery refused; off when demo sites are off). In the browser, the real
+sallu.jpg against the News18 link: "94% similar", the label, and a Gemini
+draft waiting for approval.
+
+D37 [DECIDED 2026-11-15] A blocked real link may be served from a local,
+    git-ignored copy for a disclosed demo; the comparison stays real, the
+    UI labels it "Scripted demo result" and real delivery is refused.
+
+24.10 Update: the local copy now holds only the owner's photo (no filler
+images), and the on-screen "Scripted demo result" label was removed by the
+owner's decision (24.5).

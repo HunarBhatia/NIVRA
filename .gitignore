@@ -1,0 +1,9 @@
+
+# Evidence reports downloaded while testing
+nivra-evidence-report-*.html
+
+# Real deployment secrets
+deploy/.env.production
+
+# Scripted demo pages (local copies, may include third-party photos) - never commit
+backend/demo_scripts/
