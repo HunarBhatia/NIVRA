@@ -25,7 +25,12 @@ export interface ScanCardData {
   label?: string;
   /** Only the demo shows thumbnails (its own sample images). */
   thumb?: string;
+  /** From a scripted demo page (a local copy, section 24). */
+  scripted?: boolean;
 }
+
+/** Fingerprint similarity as a percentage: 4 of 64 bits differ = 94%. */
+export const similarityPct = (distance: number) => Math.round(((64 - distance) / 64) * 100);
 
 const STAGES: { id: ScanStage; label: string }[] = [
   { id: "queued", label: "Queued" },
@@ -114,7 +119,11 @@ export function ScanCard({ d }: { d: ScanCardData }) {
             <span style={{ transform: `scaleX(${similarity})` }} />
           </div>
           <span className="hash">
-            {d.exact ? "identical file" : `${d.distance} of 64 bits differ`}
+            {d.exact
+              ? "identical file"
+              : hit
+                ? `${similarityPct(d.distance!)}% similar, ${d.distance} of 64 bits differ`
+                : `${d.distance} of 64 bits differ`}
             {d.label ? ` vs "${d.label}"` : ""}
           </span>
         </>
@@ -130,6 +139,7 @@ export default function ScanView({ stage, title, cards, error }: {
   error?: string | null;
 }) {
   const hits = cards.filter((c) => c.result === "exact" || c.result === "high" || c.result === "possible").length;
+  const scripted = cards.some((c) => c.scripted);
   const checked = cards.filter((c) => c.result !== "checking").length;
   return (
     <section className="scan well" aria-label={`Scan of ${title}`}>
@@ -152,6 +162,12 @@ export default function ScanView({ stage, title, cards, error }: {
         ))}
         {stage === "failed" && <span className="scan__step" data-state="failed">Stopped</span>}
       </div>
+      {scripted && (
+        <p className="hint" role="note">
+          Scripted demo result: this site blocks automated checks, so the page was served from a
+          local copy. The fingerprint comparison itself is real.
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
       {cards.length > 0 ? (
         <div className="scan__grid">

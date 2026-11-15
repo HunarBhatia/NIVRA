@@ -137,6 +137,8 @@ export interface ScanEntry {
   label?: string;
   /** XOR of the protected and found fingerprints: the bits that differ. */
   diff?: string | null;
+  /** Served from a local copy for a demo (section 24), not the live page. */
+  scripted?: boolean;
 }
 
 export interface DiscoveredMatch {
@@ -327,6 +329,7 @@ export interface LinkScan {
   distance: number | null;
   error_message: string | null;
   finished_at: string | null;
+  scripted?: boolean;
 }
 
 export interface DemoInfo {

@@ -22,7 +22,8 @@ function nameOf(url: string) {
  *  thumbnails; real scans never load found images (section 22.10). */
 function demoThumb(url: string) {
   try {
-    return new URL(url).hostname.endsWith(".test")
+    const u = new URL(url);
+    return u.hostname.endsWith(".test") || u.pathname.startsWith("/__nivra_scripted__/")
       ? `/api/demo/image?url=${encodeURIComponent(url)}`
       : undefined;
   } catch {
@@ -41,6 +42,7 @@ export function jobCards(job: DiscoveryJob): ScanCardData[] {
     exact: e.exact,
     label: e.label,
     thumb: demoThumb(e.url),
+    scripted: e.scripted,
   }));
 }
 

@@ -1931,3 +1931,62 @@ D35 [DECIDED 2026-11-15] Check first, then draft: a finished check of a
     (or the page couldn't be checked); the scan result is the evidence.
 D36 [DECIDED 2026-11-15] Every send shows From, To, Reply-To and delivery
     mode; NIVRA_EMAIL_REDIRECT_TO lets a demo deliver to the presenter.
+
+========================================================================
+24. SCRIPTED DEMO PAGES (A BLOCKED REAL LINK, SERVED FROM A LOCAL COPY)
+========================================================================
+
+24.1 Why
+For the judges, the owner wanted a well-known real link (a News18 photo
+gallery) to show a match with a photo of theirs. News18 answers automated
+visitors with "403 forbidden", so a live check is impossible. The owner
+will tell the judges this one result is hardcoded because a real-browser
+fetcher (e.g. Playwright) wasn't added in time.
+
+24.2 How it works (backend/app/demo_sites/scripted.py)
+backend/demo_scripts/scripts.json lists page URLs and local image files.
+When one of those URLs is checked, the fetcher serves a local page made of
+those images instead of contacting the site. Everything after that is real:
+fingerprints, comparison, scan log, evidence, Gemini's draft.
+
+24.3 Only the right photo matches
+Because the comparison is real, only a photo that is actually in the local
+copy matches; any other photo gets "not your photo". For the News18 page the
+copy is the owner's photo, lightly cropped, brightened and recompressed:
+4 of 64 bits differ, shown as "94% similar".
+
+24.4 Kept out of GitHub
+backend/demo_scripts/ is git-ignored: it holds a news photographer's photo
+and a celebrity's image, which must not be published in the repository.
+Without the folder, nothing is scripted. Tests use a temporary folder.
+
+24.5 Disclosed on screen, and can't reach the real site
+Every scan entry from a scripted page is marked; the scan view and the
+case page say "Scripted demo result: this site blocks automated checks, so
+the page was served from a local copy." Real email delivery for that link
+is refused (development logging and the demo redirect still work).
+
+24.6 Only in development
+Scripted pages follow NIVRA_ENABLE_DEMO_SITES, which the API refuses in
+production. Their image thumbnails come from the local files through
+/api/demo/image, which serves nothing else.
+
+24.7 Match strength as a percentage
+Matches now also show similarity as a percentage: (64 - differing bits) /
+64, so 4 bits = 94%. Shown only for matches: two unrelated photos always
+share about half their bits, and "53% similar" would mislead.
+
+24.8 About Playwright
+A real-browser fetcher MIGHT get past News18's block, but sites like it
+often detect automated browsers too, and getting around a site's bot block
+is a choice with terms-of-service risk. It is not a guaranteed fix.
+
+24.9 Verified
+4 new tests (served and really matched; other photos don't match; real
+delivery refused; off when demo sites are off). In the browser, the real
+sallu.jpg against the News18 link: "94% similar", the label, and a Gemini
+draft waiting for approval.
+
+D37 [DECIDED 2026-11-15] A blocked real link may be served from a local,
+    git-ignored copy for a disclosed demo; the comparison stays real, the
+    UI labels it "Scripted demo result" and real delivery is refused.

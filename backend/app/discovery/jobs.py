@@ -39,6 +39,10 @@ def process_job(
 
     report = DiscoveryReport()
     t = thresholds()
+    # A scripted demo page (section 24): served from a local copy, so every
+    # entry is marked and the UI labels it. The comparison itself is real.
+    from app.demo_sites.scripted import is_scripted_url
+    scripted = is_scripted_url(job.input_url)
     try:
         provider = providers[job.provider]
         for cand in provider.discover(job.input_url, fetcher, report):
@@ -66,6 +70,8 @@ def process_job(
                              label=best[0].label,
                              # Which of the 64 bits differ (the owner's own data).
                              diff=f"{int(ph, 16) ^ int(prints.phash, 16):016x}" if ph else None)
+            if scripted:
+                entry["scripted"] = True
             log_entries.append(entry)
             job.scan_log = list(log_entries)
             hits = [(image, c) for image, c in comparisons if c.classification != "none"]

@@ -1,6 +1,7 @@
 "use client";
 
 import type { LinkScan } from "@/lib/types";
+import { similarityPct } from "./ScanView";
 
 /** "What Nivra found" for one case link (section 23.3): the result of
  *  checking the page for the user's photo, which decides whether the
@@ -60,8 +61,16 @@ export default function ScanFindings({
         <p className="small">
           <strong style={{ color: "var(--text)" }}>Your photo is on this page:</strong>{" "}
           {STRENGTH[scan.best ?? "possible"]}
-          {scan.best !== "exact" && scan.distance != null ? `, ${scan.distance} of 64 fingerprint bits differ` : ""}.{" "}
-          {scan.images_checked} {scan.images_checked === 1 ? "image" : "images"} checked.
+          {scan.best !== "exact" && scan.distance != null
+            ? `: ${similarityPct(scan.distance)}% similar (${scan.distance} of 64 fingerprint bits differ)`
+            : ""}
+          . {scan.images_checked} {scan.images_checked === 1 ? "image" : "images"} checked.
+        </p>
+      )}
+      {scan?.scripted && (
+        <p className="hint" role="note">
+          Scripted demo result: this site blocks automated checks, so the page was served from a
+          local copy. The comparison itself is real.
         </p>
       )}
       {notFound && (

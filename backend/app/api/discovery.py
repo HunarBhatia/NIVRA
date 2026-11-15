@@ -98,11 +98,15 @@ def demo_image(url: str) -> Response:
     """Thumbnail of a bundled demo-site image for the scan view. Only the demo
     sites' own drawn images - real scans never show found images (22.10)."""
     from app.demo_sites import DEMO_SITES, serve_demo
-    host = (urlsplit(url).hostname or "").lower()
-    if not settings.enable_demo_sites or host not in DEMO_SITES:
+    from app.demo_sites.scripted import IMAGE_PREFIX, serve_scripted
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    is_scripted_image = parts.path.startswith(IMAGE_PREFIX)
+    if not settings.enable_demo_sites or (host not in DEMO_SITES and not is_scripted_image):
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
     try:
-        res = serve_demo(url, 5_000_000)
+        # Scripted pages' images are local files (section 24), never fetched.
+        res = serve_scripted(url, 5_000_000) if is_scripted_image else serve_demo(url, 5_000_000)
     except FetchError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND) from None
     if res is None or not res.content_type.startswith("image/"):
@@ -135,6 +139,7 @@ def case_scans(case_id: str, user: CurrentUser, db: DB) -> dict[str, Any]:
             "best": best["result"] if best else ("none" if job.status == "done" else None),
             "distance": best.get("distance") if best else None,
             "error_message": job.error_message, "finished_at": job.finished_at,
+            "scripted": any(e.get("scripted") for e in job.scan_log or []),
         }
     return out
 

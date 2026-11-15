@@ -153,6 +153,12 @@ def send_complaint(complaint_id: str, user: CurrentUser, db: DB) -> dict[str, An
                             "You've sent a lot of notices today. Please try again tomorrow.")
     link = db.get(CaseLink, c.link_id)
     where = sending.recipients_for(link.host)
+    from app.demo_sites.scripted import is_scripted_url
+    if is_scripted_url(link.url) and get_settings().email_backend == "smtp" \
+            and not get_settings().email_redirect_to:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "This link's result is a scripted demo, so Nivra won't email the real "
+                            "site. Use development mode or the demo inbox redirect.")
     if where["form_only"]:
         raise HTTPException(status.HTTP_409_CONFLICT,
                             f"{where['platform']} only accepts reports through its own form, "

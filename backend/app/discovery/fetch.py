@@ -135,6 +135,10 @@ class SafeFetcher:
             demo = serve_demo(url, max_bytes)
             if demo is not None:
                 return demo
+            from app.demo_sites.scripted import serve_scripted  # local copies (section 24)
+            scripted = serve_scripted(url, max_bytes)
+            if scripted is not None:
+                return scripted
         for _ in range(MAX_REDIRECTS + 1):
             # Scheme, port and address first, so the user sees the real reason
             # (the request itself re-checks the address before connecting).
