@@ -94,7 +94,13 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_username: str | None = None
     smtp_password: str | None = None
-    smtp_from: str = "Nivra <no-reply@example.invalid>"
+    # The From address on notices Nivra sends. In production set it to an
+    # address on your own domain (with SPF/DKIM) so platforms trust it.
+    smtp_from: str = "Nivra Notices (development) <notices@nivra.test>"
+    # Development/demo only: deliver EVERY outgoing notice to this address
+    # instead of the real recipient (the intended recipient is shown in the
+    # subject and body). Lets you watch real emails arrive during a demo.
+    email_redirect_to: str | None = None
 
     # Production hardening (phase 8, section 21)
     allowed_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
@@ -108,6 +114,9 @@ class Settings(BaseSettings):
 
     # Prototype-only helpers (e.g. "pretend the deadline passed").
     enable_prototype_tools: bool = True
+    # Bundled demo websites (*.test) that the real scanner can read, for
+    # reliable demonstrations (section 23). Never in production.
+    enable_demo_sites: bool = True
 
     # Origins allowed to call the API directly (the Next.js dev server proxies
     # /api, so this is only needed when the frontend runs elsewhere).
@@ -126,6 +135,10 @@ def get_settings() -> Settings:
             raise RuntimeError("NIVRA_COOKIE_SECURE must be true in production")
         if settings.enable_prototype_tools:
             raise RuntimeError("NIVRA_ENABLE_PROTOTYPE_TOOLS must be false in production")
+        if settings.enable_demo_sites:
+            raise RuntimeError("NIVRA_ENABLE_DEMO_SITES must be false in production")
+        if settings.email_redirect_to:
+            raise RuntimeError("NIVRA_EMAIL_REDIRECT_TO must not be set in production")
         if settings.discovery_allow_private_hosts:
             raise RuntimeError("NIVRA_DISCOVERY_ALLOW_PRIVATE_HOSTS must be false in production")
         if not settings.data_key:

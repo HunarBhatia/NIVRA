@@ -26,6 +26,8 @@ import type {
   ProtectedImage,
   Recipients,
   SentComplaint,
+  LinkScan,
+  DemoInfo,
 } from "./types";
 
 // Client for the Nivra backend (backend/app). Every call goes to /api/*,
@@ -170,8 +172,14 @@ export const checkCopy = (fp: Omit<Fingerprints, "phash_algorithm">) =>
 
 // ---------- Discovery (phase 4) ----------
 
-export const createDiscoveryJob = (url: string) =>
-  call<DiscoveryJob>("/discovery/jobs", json("POST", { url }));
+export const createDiscoveryJob = (url: string, linkId?: string) =>
+  call<DiscoveryJob>("/discovery/jobs", json("POST", linkId ? { url, link_id: linkId } : { url }));
+
+/** Latest check of each link in a case, keyed by link id. */
+export const getCaseScans = (caseId: string) =>
+  call<Record<string, LinkScan>>(`/cases/${encodeURIComponent(caseId)}/scans`);
+
+export const getDemoInfo = () => call<DemoInfo>("/demo");
 
 export const listDiscoveryJobs = () => call<DiscoveryJob[]>("/discovery/jobs");
 

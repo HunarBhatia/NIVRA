@@ -47,10 +47,13 @@ export function NoticeAssistant({
   caseId,
   linkId,
   platformName,
+  refresh = 0,
 }: {
   caseId: string;
   linkId: string;
   platformName?: string;
+  /** Changes when drafts may have appeared (e.g. auto-drafted after a check). */
+  refresh?: number;
 }) {
   const status = useAgentStatus();
   const [run, setRun] = useState<AgentRun | null>(null);
@@ -63,7 +66,7 @@ export function NoticeAssistant({
       .listAgentRuns("complaint", linkId)
       .then((runs) => setRun(runs.find((r) => r.status === "completed" || r.status === "awaiting_approval") ?? null))
       .catch(() => {});
-  }, [linkId]);
+  }, [linkId, refresh]);
 
   async function act(fn: () => Promise<AgentRun>) {
     setBusy(true);

@@ -83,7 +83,9 @@ export function ScanCard({ d }: { d: ScanCardData }) {
     <div ref={ref} className="scan-card" data-result={d.result}>
       <div className="scan-card__thumb">
         {/* eslint-disable-next-line @next/next/no-img-element -- local demo samples only */}
-        {d.thumb && <img src={d.thumb} alt="" />}
+        {d.thumb && (
+          <img src={d.thumb} alt="" onError={(e) => (e.currentTarget.style.display = "none")} />
+        )}
         {d.result === "checking" && <div className="scan-card__beam scan-loop" />}
       </div>
       <div className="scan-card__row">

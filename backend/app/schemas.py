@@ -194,6 +194,8 @@ class MatchCheckOut(BaseModel):
 
 class DiscoveryJobIn(Strict):
     url: str = Field(min_length=4, max_length=2048)
+    # Optional: the case link being checked (must be the user's own).
+    link_id: str | None = Field(default=None, max_length=32)
 
 
 class DiscoveryJobOut(BaseModel):
@@ -212,6 +214,7 @@ class DiscoveryJobOut(BaseModel):
     finished_at: datetime | None
     stage: str = "queued"
     scan_log: list[dict] | None = None
+    case_link_id: str | None = None
 
 
 class MatchOut(BaseModel):

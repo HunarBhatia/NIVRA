@@ -1,19 +1,23 @@
 """Discovery jobs and the human review of what they find.
 
-Nothing found by discovery is acted on automatically: a match must be
-confirmed by the user before it can be added to a case (and only then can a
-notice be drafted).
+Nothing found by discovery is SENT automatically. Matches from the Protect
+page are confirmed by the user before joining a case. A check of a case
+link (section 23) lets the assistant DRAFT that link's notice, which still
+waits for the user's approval before anything is sent.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import func, select
 
 from app.api.cases import _make_links, _own_case
 from app.api.deps import DB, CurrentUser
 from app.core.config import get_settings
-from app.models import Case, DiscoveredMatch, DiscoveryJob, ProtectedImage, User
+from app.discovery.fetch import FetchError
+from app.models import Case, CaseLink, DiscoveredMatch, DiscoveryJob, ProtectedImage, User
 from app.schemas import (
     DiscoveryJobIn,
     DiscoveryJobOut,
@@ -65,12 +69,74 @@ def create_job(body: DiscoveryJobIn, user: CurrentUser, db: DB) -> DiscoveryJob:
     if recent >= settings.discovery_jobs_per_hour:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
                             "You've checked a lot of pages this hour. Please try again later.")
-    job = DiscoveryJob(user_id=user.id, provider="user_url", input_url=url)
+    link_id = None
+    if body.link_id:
+        link = db.scalar(select(CaseLink).join(Case, Case.id == CaseLink.case_id).where(
+            CaseLink.id == body.link_id, Case.user_id == user.id))
+        if link is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+        link_id = link.id
+    job = DiscoveryJob(user_id=user.id, provider="user_url", input_url=url, case_link_id=link_id)
     db.add(job)
     db.flush()
     audit.record(db, "discovery.job_created", user.id, "discovery_job", job.id)
     db.commit()
     return job
+
+
+@router.get("/demo")
+def demo_info() -> dict[str, Any]:
+    """The bundled demo sites, if enabled (section 23.2). Public: no user data."""
+    if not settings.enable_demo_sites:
+        return {"enabled": False, "links": []}
+    from app.demo_sites import demo_links
+    return {"enabled": True, "photo": "/demo/protected.jpg", "links": demo_links()}
+
+
+@router.get("/demo/image")
+def demo_image(url: str) -> Response:
+    """Thumbnail of a bundled demo-site image for the scan view. Only the demo
+    sites' own drawn images - real scans never show found images (22.10)."""
+    from app.demo_sites import DEMO_SITES, serve_demo
+    host = (urlsplit(url).hostname or "").lower()
+    if not settings.enable_demo_sites or host not in DEMO_SITES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+    try:
+        res = serve_demo(url, 5_000_000)
+    except FetchError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND) from None
+    if res is None or not res.content_type.startswith("image/"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+    return Response(res.body, media_type=res.content_type,
+                    headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/cases/{case_id}/scans")
+def case_scans(case_id: str, user: CurrentUser, db: DB) -> dict[str, Any]:
+    """The latest check of each link in a case, keyed by link id (section 23.3)."""
+    case = db.scalar(select(Case).where(Case.id == case_id, Case.user_id == user.id))
+    if case is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+    link_ids = [lk.id for lk in case.links]
+    out: dict[str, Any] = {}
+    jobs = db.scalars(select(DiscoveryJob).where(DiscoveryJob.case_link_id.in_(link_ids))
+                      .order_by(DiscoveryJob.created_at.desc())) if link_ids else []
+    for job in jobs:
+        if job.case_link_id in out:
+            continue
+        best = None
+        for e in job.scan_log or []:
+            if e.get("result") in ("exact", "high", "possible") and (
+                    best is None or (e.get("distance") or 0) < (best.get("distance") or 0)):
+                best = e
+        out[job.case_link_id] = {
+            "job_id": job.id, "status": job.status, "stage": job.stage,
+            "images_checked": job.candidates_checked, "matches_found": job.matches_found,
+            "best": best["result"] if best else ("none" if job.status == "done" else None),
+            "distance": best.get("distance") if best else None,
+            "error_message": job.error_message, "finished_at": job.finished_at,
+        }
+    return out
 
 
 @router.get("/discovery/jobs", response_model=list[DiscoveryJobOut])

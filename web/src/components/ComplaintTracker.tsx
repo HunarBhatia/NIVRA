@@ -130,6 +130,9 @@ function ComplaintCard({
         <p className="small muted">Approve or discard this draft in the Assistant box.</p>
       )}
       {c.status === "user_approved" && <SendPanel c={c} onChanged={onChanged} />}
+      {c.channel_kind === "email" && c.submitted_at && c.events.some((e) => e.status === "sent_by_nivra") && (
+        <SentEmail c={c} />
+      )}
       {(c.status === "submitted_by_user" || c.status === "sent_by_nivra") && platform && (
         <p className="small muted">
           {platform.name} should act within {platform.expectedHours} hours.{" "}
@@ -226,13 +229,79 @@ function ComplaintCard({
   );
 }
 
+/** The email's envelope: who it is from, who it goes to, where replies go,
+ *  and how it is (or was) delivered. Shown before AND after sending, so the
+ *  user always knows exactly where their notice went. */
+function Envelope({
+  from,
+  to,
+  replyTo,
+  subject,
+  delivery,
+  redirect,
+  sent,
+}: {
+  from: string;
+  to: { address: string; why?: string }[];
+  replyTo: string | null;
+  subject: string;
+  delivery: Recipients["delivery"];
+  redirect: string | null;
+  sent: boolean;
+}) {
+  const rows: [string, React.ReactNode][] = [
+    ["From", <span key="f" className="mono">{from}</span>],
+    [
+      "To",
+      <span key="t" style={{ display: "grid", gap: 2 }}>
+        {to.map((r) => (
+          <span key={r.address}>
+            <span className="mono">{r.address}</span>
+            {r.why && <span className="muted"> ({r.why})</span>}
+          </span>
+        ))}
+      </span>,
+    ],
+    [
+      "Reply-To",
+      replyTo ? (
+        <span key="r" className="mono">{replyTo}</span>
+      ) : (
+        <span key="r" className="muted">
+          Nivra&apos;s address (add your email in Settings to get replies directly)
+        </span>
+      ),
+    ],
+    ["Subject", <span key="s">{subject}</span>],
+  ];
+  const note = redirect
+    ? `Demo mode: ${sent ? "it was" : "it will be"} delivered to ${redirect} instead of the real recipient.`
+    : delivery === "console"
+      ? `Development mode: the email ${sent ? "was" : "will be"} recorded on the server, not delivered.`
+      : sent
+        ? "Delivered by email."
+        : "It will be delivered by email.";
+  return (
+    <div className="stack" style={{ gap: 0 }}>
+      <dl className="envelope">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="hint" style={{ marginTop: "var(--space-xs)" }}>{note}</p>
+    </div>
+  );
+}
+
 /** Shows where an approved notice will go and sends it. Email channels
  *  (the platform's address, or the site host's abuse desk found via RDAP)
  *  are sent by Nivra; form-only platforms get "copy + open form". */
 function SendPanel({ c, onChanged }: { c: Complaint; onChanged: () => void }) {
   const [where, setWhere] = useState<Recipients | null>(null);
-  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
-  const [result, setResult] = useState("");
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const started = useRef(false);
@@ -240,20 +309,14 @@ function SendPanel({ c, onChanged }: { c: Complaint; onChanged: () => void }) {
   async function send() {
     if (started.current) return;
     started.current = true;
-    setState("sending");
+    setSending(true);
     setError("");
     try {
-      const r = await api.sendComplaint(c.id);
-      setResult(
-        `Sent to ${r.sent_to.join(", ")}.` +
-          (r.delivered ? "" : " (Development mode: logged, not actually delivered.)") +
-          (r.replies_to_you ? " Replies will come to your email." : ""),
-      );
-      setState("sent");
-      onChanged();
+      await api.sendComplaint(c.id);
+      onChanged(); // the complaint is now "Sent by Nivra": the sent panel takes over
     } catch (e) {
       started.current = false;
-      setState("idle");
+      setSending(false);
       setError(errorText(e));
     }
   }
@@ -270,7 +333,7 @@ function SendPanel({ c, onChanged }: { c: Complaint; onChanged: () => void }) {
           void send();
         }
       })
-      .catch(() => live && setWhere({ emails: [], form_only: false, forms: [], platform: null }));
+      .catch(() => live && setError("Couldn't work out where to send it. Please reload."));
     return () => {
       live = false;
     };
@@ -285,29 +348,27 @@ function SendPanel({ c, onChanged }: { c: Complaint; onChanged: () => void }) {
     if (target?.startsWith("http")) window.open(target, "_blank", "noopener,noreferrer");
   }
 
-  if (!where) return <p className="small muted">Finding where to send it...</p>;
+  if (!where) return error ? <p className="error">{error}</p> : <p className="small muted">Finding where to send it...</p>;
 
   return (
     <div className="well well--moss stack">
-      {state === "sent" ? (
-        <p className="small" role="status">
-          <strong>Sent.</strong> {result}
-        </p>
-      ) : where.emails.length > 0 ? (
+      {where.emails.length > 0 ? (
         <>
           <p className="small">
-            <strong>Ready to send.</strong> Nivra will email this notice to:
+            <strong>{sending ? "Sending..." : "Ready to send."}</strong>
           </p>
-          <ul className="timeline">
-            {where.emails.map((e) => (
-              <li key={e.address}>
-                <span className="mono">{e.address}</span> <span className="muted">({e.why})</span>
-              </li>
-            ))}
-          </ul>
+          <Envelope
+            from={where.from_address}
+            to={where.emails}
+            replyTo={where.reply_to}
+            subject={c.subject}
+            delivery={where.delivery}
+            redirect={where.redirect_to}
+            sent={false}
+          />
           <div className="actions">
-            <button className="btn btn--primary btn--small" disabled={state === "sending"} onClick={send}>
-              {state === "sending" ? "Sending..." : "Send it now"}
+            <button className="btn btn--primary btn--small" disabled={sending} onClick={send}>
+              {sending ? "Sending..." : "Send it now"}
             </button>
           </div>
         </>
@@ -333,6 +394,51 @@ function SendPanel({ c, onChanged }: { c: Complaint; onChanged: () => void }) {
         </p>
       )}
       {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+/** A notice Nivra emailed: the full envelope and the exact email. */
+function SentEmail({ c }: { c: Complaint }) {
+  const [where, setWhere] = useState<Recipients | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.getRecipients(c.link_id).then((w) => live && setWhere(w)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [c.link_id]);
+
+  const to = (c.channel_label ?? "").split(",").map((a) => ({ address: a.trim() })).filter((a) => a.address);
+  return (
+    <div className="well well--moss stack">
+      <p className="small" role="status">
+        <strong>Sent by Nivra</strong>
+        {c.submitted_at ? ` on ${when(c.submitted_at)}` : ""}.
+      </p>
+      {where ? (
+        <Envelope
+          from={where.from_address}
+          to={to}
+          replyTo={where.reply_to}
+          subject={c.subject}
+          delivery={where.delivery}
+          redirect={where.redirect_to}
+          sent
+        />
+      ) : (
+        <p className="small mono">To: {c.channel_label}</p>
+      )}
+      <details>
+        <summary className="small" style={{ cursor: "pointer" }}>
+          View the email exactly as sent
+        </summary>
+        <div className="notice" style={{ marginTop: "var(--space-sm)" }}>
+          {`From: ${where?.from_address ?? "Nivra"}\nTo: ${c.channel_label ?? ""}\n${
+            where?.reply_to ? `Reply-To: ${where.reply_to}\n` : ""
+          }Subject: ${c.subject}\n\n${c.body}`}
+        </div>
+      </details>
     </div>
   );
 }

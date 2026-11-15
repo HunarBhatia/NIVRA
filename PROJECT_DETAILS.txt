@@ -1830,3 +1830,104 @@ D32 [DECIDED 2026-11-15] Start a case asks for the photo (fingerprinted on
 D33 [DECIDED 2026-11-15] Scans are shown live from a per-image scan log;
     real scans show only hashes, never the found images. A /demo runs the
     real matching on sample images in the browser.
+
+========================================================================
+23. CHECK FIRST, THEN DRAFT; WHERE MAIL GOES; DEMO SITES FOR THE MENTOR ROUND
+========================================================================
+
+23.1 Why
+The owner couldn't see where "Approve & send" emails went, and wanted the
+product to behave intelligently: check whether the photo is really on each
+shared link, THEN draft the notice from what was found. With the mentor
+round coming, demos also had to work every time.
+
+23.2 Bundled demo sites (backend/app/demo_sites)
+Real sites often refuse automated visits, so a live demo could fail. Five
+fake sites under the reserved .test domain (it can never be a real site)
+are served from files straight to the REAL scanner: snapgram.test (edited
+copy), chatforum.test (captioned, shrunk copy), imgdump.test (exact copy),
+travelblog.test (a different lake photo) and privategroup.test (blocked).
+
+23.3 Why "hardcoded" runs are still honest
+Only the web pages are bundled. Fingerprinting, comparison, the scan log,
+Gemini's drafting and sending all run for real, so results vary if the
+photo varies. The copies are edits of web/public/demo/protected.jpg (a
+drawn scene, no people). Expected results: strong (6 bits), possible (10),
+exact, no match (30) and blocked. Rebuild: backend/scripts/make_demo_sites.py.
+
+23.4 Demo sites are off in production
+NIVRA_ENABLE_DEMO_SITES (default true in development) makes the API refuse
+to start in production, like the other prototype switches. Only the five
+listed hosts are served; any other .test address goes through the normal
+safe fetcher. GET /api/demo lists them for the UI.
+
+23.5 Scans belong to case links
+DiscoveryJob gained case_link_id (migration a817e86239d3). Start a case
+creates one check per link, tied to it. GET /api/cases/{id}/scans gives
+each link's latest result, shown on the case page as "What Nivra found",
+with a "Check this page for my photo" button for links added later.
+
+23.6 Check first, then draft (app/agents/service.py auto_draft_for_job)
+When a link's check finishes, the backend decides: photo found -> the
+assistant drafts the notice; page couldn't be checked (login wall) -> it
+drafts anyway but claims nothing was verified; photo NOT found -> no draft,
+the user decides. Links that already have a notice are never re-drafted.
+
+23.7 The scan becomes the notice's evidence
+The complaint agent's gather step reads the link's latest check and adds
+one evidence sentence: how many images were examined, how many matched,
+and how close ("an exact copy" or "differs in only 6 of 64 points"). Gemini
+gets only these numbers - never the image, the URL or the user's name.
+
+23.8 Where mail goes, shown everywhere
+Before and after sending, an envelope shows From (NIVRA_SMTP_FROM), To
+(platform address or the host's abuse desk), Reply-To (the user's own email
+if saved) and Subject, plus "View the email exactly as sent". It also says
+plainly whether the email was delivered, logged (development) or redirected.
+
+23.9 The From address
+Development default: "Nivra Notices (development) <notices@nivra.test>",
+which can't deliver anywhere on purpose. In production NIVRA_SMTP_FROM must
+be an address on a domain Nivra controls, with SPF/DKIM set up, or
+platforms will treat the notices as spam.
+
+23.10 Demo redirect: watch real emails arrive
+NIVRA_EMAIL_REDIRECT_TO=<your inbox> (with SMTP settings) delivers EVERY
+outgoing notice to that inbox instead, with "[DEMO for abuse@...]" in the
+subject and the intended recipient at the top. Lets the mentors see a real
+email land without contacting anyone. Refused in production.
+
+23.11 Demo thumbnails only
+The scan view shows pictures only for the demo sites (their own drawn
+images, via /api/demo/image, which serves nothing else). Real scans still
+show only fingerprints (22.10).
+
+23.12 Mentor-round script (about 3 minutes)
+1. Landing: the fingerprint hero, then "See it work" for the in-browser demo.
+2. Start a case: adult -> intimate -> "Use the demo photo" (watch its
+   fingerprint appear) -> confirm -> "Fill the demo links" -> skip proof ->
+   passphrase -> Create.
+3. Watch five live scans: strong, possible, exact, not found, blocked.
+4. "Review the drafted notices": each link shows what was found and
+   Gemini's draft citing it; travelblog has no draft (not your photo).
+5. "Approve & send" one: the envelope shows From/To/Reply-To; open "View
+   the email exactly as sent". (Optional: redirect to your inbox, 23.10.)
+
+23.13 Verified
+Backend: 185 tests pass (new: 6 demo-flow tests covering demo serving,
+thumbnails, the full check-then-draft flow, ownership, sender details and
+the redirect; production-config tests extended). In the browser: the whole
+script above, with live Gemini drafts that included the evidence sentence.
+
+23.14 Not verified
+Real SMTP delivery and the redirect against a real inbox (needs the
+owner's SMTP settings). Gemini sometimes wrote one long paragraph; the
+prompt now asks for short paragraphs, not yet re-checked live.
+
+D34 [DECIDED 2026-11-15] Demonstrations use five bundled .test sites read
+    by the real scanner (development only), not a scripted playback.
+D35 [DECIDED 2026-11-15] Check first, then draft: a finished check of a
+    case link triggers the assistant's draft only when the photo was found
+    (or the page couldn't be checked); the scan result is the evidence.
+D36 [DECIDED 2026-11-15] Every send shows From, To, Reply-To and delivery
+    mode; NIVRA_EMAIL_REDIRECT_TO lets a demo deliver to the presenter.

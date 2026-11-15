@@ -123,7 +123,17 @@ SENDS_PER_DAY = 30
 def link_recipients(link_id: str, user: CurrentUser, db: DB) -> dict[str, Any]:
     """Where Nivra would email a notice for this link (shown before sending)."""
     link = _own_link(db, user, link_id)
-    return sending.recipients_for(link.host)
+    return {**sending.recipients_for(link.host), **_sender_details(user)}
+
+
+def _sender_details(user: User) -> dict[str, Any]:
+    """Who a notice is FROM, where replies go, and how it is delivered -
+    shown next to every send so the user always knows."""
+    s = get_settings()
+    reply_to = decrypt_field(user.email_encrypted) if user.email_encrypted else None
+    return {"from_address": s.smtp_from, "reply_to": reply_to,
+            "delivery": "console" if s.email_backend == "console" else "smtp",
+            "redirect_to": s.email_redirect_to}
 
 
 @router.post("/complaints/{complaint_id}/send")
@@ -153,20 +163,29 @@ def send_complaint(complaint_id: str, user: CurrentUser, db: DB) -> dict[str, An
                             "Look for a contact or abuse page on the site.")
     out = _complaint_out(db, c)  # filled-in subject/body
     reply_to = decrypt_field(user.email_encrypted) if user.email_encrypted else None
+    redirect = get_settings().email_redirect_to
     try:
         for r in where["emails"]:
-            notify.sender().send(r["address"], out["subject"], out["body"], reply_to=reply_to)
+            if redirect:  # demo: deliver to the presenter's inbox, say who it was for
+                notify.sender().send(
+                    redirect, f"[DEMO for {r['address']}] {out['subject']}",
+                    f"Demo redirect: in real use this notice goes to {r['address']}.\n\n{out['body']}",
+                    reply_to=reply_to)
+            else:
+                notify.sender().send(r["address"], out["subject"], out["body"], reply_to=reply_to)
     except Exception:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY,
                             "The email couldn't be sent. Please try again later.") from None
     to = ", ".join(r["address"] for r in where["emails"])
     dev = get_settings().email_backend == "console"
     svc.transition(db, c, "sent_by_nivra", channel_kind="email", channel_label=to[:120],
-                   note=f"Sent by Nivra to {to}" + (" (development: logged, not delivered)" if dev else ""))
+                   note=f"Sent by Nivra to {to}" + (
+                       " (development: logged, not delivered)" if dev
+                       else f" (demo: delivered to {redirect} instead)" if redirect else ""))
     audit.record(db, "complaint.sent_by_nivra", user.id, "complaint", c.id)
     db.commit()
     return {**_complaint_out(db, c), "sent_to": [r["address"] for r in where["emails"]],
-            "delivered": not dev, "replies_to_you": bool(reply_to)}
+            "delivered": not dev, "replies_to_you": bool(reply_to), **_sender_details(user)}
 
 
 # ---------------- Case timeline ----------------

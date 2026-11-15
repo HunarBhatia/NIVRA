@@ -8,6 +8,7 @@ import {
   addWatch,
   createCase,
   createDiscoveryJob,
+  getDemoInfo,
   getMe,
   register,
   registerImage,
@@ -17,7 +18,7 @@ import LiveScan from "@/components/scan/LiveScan";
 import { UnreadableImage, fingerprintFile, type Fingerprints } from "@/lib/fingerprint";
 import { CATEGORY_LABEL } from "@/lib/notices";
 import { TAKE_IT_DOWN_URL, normaliseUrl, resolvePlatform, splitLinks } from "@/lib/platforms";
-import type { Account, Category } from "@/lib/types";
+import type { Account, Category, DemoInfo, DiscoveryJob } from "@/lib/types";
 
 // The "Start a case" wizard (blueprint 10.2). One decision per screen.
 
@@ -69,13 +70,25 @@ export default function StartWizard() {
   const [checkNow, setCheckNow] = useState(true);
   const [watch, setWatch] = useState(false);
   const [jobIds, setJobIds] = useState<string[]>([]);
+  const [finishedJobs, setFinishedJobs] = useState<DiscoveryJob[] | null>(null);
+  // Bundled demo sites (section 23), shown only when the server enables them.
+  const [demo, setDemo] = useState<DemoInfo | null>(null);
   const [scanNotes, setScanNotes] = useState<string[]>([]);
 
   useEffect(() => {
     getMe()
       .then(setAccount)
       .catch(() => setAccount(null));
+    getDemoInfo()
+      .then((d) => setDemo(d.enabled ? d : null))
+      .catch(() => {});
   }, []);
+
+  async function loadDemoPhoto() {
+    if (!demo?.photo) return;
+    const blob = await (await fetch(demo.photo)).blob();
+    await choosePhoto(new File([blob], "demo-photo.jpg", { type: blob.type || "image/jpeg" }));
+  }
 
   const parsed = useMemo(() => parseLinks(linkText), [linkText]);
   const validUrls = parsed.filter((p) => p.url).map((p) => p.url as string);
@@ -159,7 +172,7 @@ export default function StartWizard() {
           if (!(e instanceof ApiError && e.status === 409)) throw e;
         }
       }
-      await createCase({
+      const created = await createCase({
         category: category as Category,
         self_taken: selfTaken === "yes" ? true : selfTaken === "no" ? false : null,
         display_name: displayName,
@@ -169,11 +182,13 @@ export default function StartWizard() {
       // watching (section 22.4). A link that can't be checked is noted, not fatal.
       const ids: string[] = [];
       const notes: string[] = [];
-      for (const url of prints && checkNow ? validUrls : []) {
+      // Each check is tied to its case link: when it finishes, the assistant
+      // drafts that link's notice from what was found (section 23.4).
+      for (const link of prints && checkNow ? created.links : []) {
         try {
-          ids.push((await createDiscoveryJob(url)).id);
+          ids.push((await createDiscoveryJob(link.url, link.id)).id);
         } catch (e) {
-          notes.push(`${url}: ${e instanceof ApiError ? e.message : "couldn't be checked"}`);
+          notes.push(`${link.url}: ${e instanceof ApiError ? e.message : "couldn't be checked"}`);
         }
       }
       for (const url of watch ? validUrls : []) {
@@ -384,6 +399,14 @@ export default function StartWizard() {
             <strong style={{ color: "var(--text)" }}>{photoUrl ? "Choose a different photo" : "Choose or drop the photo"}</strong>
             <span className="small muted">JPG, PNG or WebP. Stays on this device.</span>
           </label>
+          {demo && (
+            <p className="small muted" style={{ marginTop: "var(--space-sm)" }}>
+              Demo mode:{" "}
+              <button className="btn btn--small btn--ghost" onClick={() => void loadDemoPhoto()}>
+                Use the demo photo
+              </button>
+            </p>
+          )}
 
           {photoUrl && (
             <div className="preview-wrap" style={{ marginTop: "var(--space-lg)" }}>
@@ -446,6 +469,30 @@ export default function StartWizard() {
               value={linkText}
               onChange={(e) => setLinkText(e.target.value)}
             />
+            {demo && (
+              <div className="well small stack">
+                <span>
+                  <strong style={{ color: "var(--text)" }}>Demo mode.</strong> Five bundled demo
+                  sites the real scanner can read:
+                </span>
+                <ul className="timeline">
+                  {demo.links.map((d) => (
+                    <li key={d.url}>
+                      <span className="mono">{d.url.replace("https://", "")}</span>{" "}
+                      <span className="muted">{d.about}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div>
+                  <button
+                    className="btn btn--small"
+                    onClick={() => setLinkText(demo.links.map((d) => d.url).join("\n"))}
+                  >
+                    Fill the demo links
+                  </button>
+                </div>
+              </div>
+            )}
             {parsed.length > 0 && (
               <ul className="detected" aria-live="polite">
                 {parsed.map((p, i) => {
@@ -650,12 +697,13 @@ export default function StartWizard() {
             <div className="stack">
               <h2>Checking your links now</h2>
               <p className="small muted">
-                Each image on each page is fingerprinted and compared with yours. Matches wait for
-                you to confirm them on the Protect page.
+                Each image on each page is fingerprinted and compared with yours. Where your photo
+                is found, the assistant drafts the notice from what it found.
               </p>
-              <LiveScan jobIds={jobIds} />
+              <LiveScan jobIds={jobIds} onFinished={setFinishedJobs} />
             </div>
           )}
+          {finishedJobs && <ScanOutcome jobs={finishedJobs} />}
           {scanNotes.length > 0 && (
             <div className="well well--clay small">
               Some links couldn&apos;t be checked automatically:
@@ -667,11 +715,12 @@ export default function StartWizard() {
             </div>
           )}
           <p>
-            Next, approve a notice for each link and Nivra sends it to the right place.
+            Next, review each drafted notice in your case. One click approves it and Nivra sends it
+            to the right place.
           </p>
           <div className="actions">
             <button className="btn btn--primary" onClick={() => router.push("/case")}>
-              Go to my case
+              {finishedJobs ? "Review the drafted notices" : "Go to my case"}
             </button>
             {jobIds.length > 0 && (
               <Link href="/protect" className="btn">
@@ -681,6 +730,55 @@ export default function StartWizard() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+/** After the checks: what happens to each link next (section 23.4). */
+function ScanOutcome({ jobs }: { jobs: DiscoveryJob[] }) {
+  const found = jobs.filter((j) => j.status === "done" && j.matches_found > 0);
+  const missing = jobs.filter((j) => j.status === "done" && j.matches_found === 0);
+  const blocked = jobs.filter((j) => j.status === "failed");
+  const host = (u: string) => {
+    try {
+      return new URL(u).hostname;
+    } catch {
+      return u;
+    }
+  };
+  return (
+    <div className="well well--moss stack">
+      <h3>What happens next</h3>
+      <ul className="ladder small">
+        {found.length > 0 && (
+          <li>
+            <span>
+              <strong style={{ color: "var(--text)" }}>
+                Your photo was found on {found.length} {found.length === 1 ? "page" : "pages"}
+              </strong>{" "}
+              ({found.map((j) => host(j.input_url)).join(", ")}). The assistant is drafting a
+              notice for each, using what the scan found as evidence.
+            </span>
+          </li>
+        )}
+        {blocked.length > 0 && (
+          <li>
+            <span>
+              {blocked.length} {blocked.length === 1 ? "page" : "pages"} couldn&apos;t be checked (
+              {blocked.map((j) => host(j.input_url)).join(", ")}). Notices are drafted anyway,
+              without claiming anything was verified.
+            </span>
+          </li>
+        )}
+        {missing.length > 0 && (
+          <li>
+            <span>
+              Your photo wasn&apos;t found on {missing.map((j) => host(j.input_url)).join(", ")}, so
+              no notice was drafted there. You can still prepare one.
+            </span>
+          </li>
+        )}
+      </ul>
     </div>
   );
 }

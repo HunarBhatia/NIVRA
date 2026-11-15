@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AccountGate from "@/components/AccountGate";
 import { FollowUpAssistant, NoticeAssistant } from "@/components/Assistant";
+import ScanFindings from "@/components/scan/ScanFindings";
 import CaseTimeline from "@/components/CaseTimeline";
 import ComplaintTracker, {
   COMPLAINTS_CHANGED,
@@ -23,7 +24,16 @@ import {
   resolvePlatform,
   splitLinks,
 } from "@/lib/platforms";
-import type { Account, CaseLink, CaseSummary, Complaint, LinkStatus, NivraCase, Platform } from "@/lib/types";
+import type {
+  Account,
+  CaseLink,
+  CaseSummary,
+  Complaint,
+  LinkScan,
+  LinkStatus,
+  NivraCase,
+  Platform,
+} from "@/lib/types";
 
 // The account dashboard (/case). Logged out: the unlock form. Logged in: the
 // account's cases, each link with its notice, status and next step. All data
@@ -181,7 +191,10 @@ function Dashboard({
   const [version, setVersion] = useState(0);
 
   const refreshComplaints = useCallback(() => {
-    api.listComplaints(c.id).then(setComplaints).catch(() => {});
+    api
+      .listComplaints(c.id)
+      .then(setComplaints)
+      .catch(() => {});
     setVersion((v) => v + 1);
   }, [c.id]);
 
@@ -197,6 +210,47 @@ function Dashboard({
       window.removeEventListener(COMPLAINTS_CHANGED, refreshComplaints);
     };
   }, [c.id, refreshComplaints]);
+
+  // "Check first, then draft" (section 23.3): follow each link's latest
+  // check, and keep polling while a check runs or the assistant is drafting.
+  const [scans, setScans] = useState<Record<string, LinkScan>>({});
+  const [pollKey, setPollKey] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let lastIds = "";
+    const tick = async () => {
+      const [s, list] = await Promise.all([
+        api.getCaseScans(c.id).catch(() => ({}) as Record<string, LinkScan>),
+        api.listComplaints(c.id).catch(() => null),
+      ]);
+      if (!alive) return;
+      setScans(s);
+      if (list) {
+        const ids = list.map((x) => `${x.id}:${x.status}`).join(",");
+        if (ids !== lastIds) {
+          lastIds = ids;
+          setComplaints(list);
+          setVersion((v) => v + 1);
+        }
+      }
+      const busy = Object.entries(s).some(
+        ([linkId, x]) =>
+          x.status === "queued" ||
+          x.status === "running" ||
+          isDrafting(
+            x,
+            (list ?? []).some((cm) => cm.link_id === linkId),
+          ),
+      );
+      if (busy) timer = setTimeout(tick, 1500);
+    };
+    void tick();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [c.id, pollKey]);
 
   // A complaint step can change the link's status, so reload the case too.
   const complaintChanged = () => {
@@ -270,7 +324,10 @@ function Dashboard({
             </div>
           </div>
           {cases.length > 1 && (
-            <div className="field" style={{ marginTop: "var(--space-lg)", maxWidth: "24rem" }}>
+            <div
+              className="field"
+              style={{ marginTop: "var(--space-lg)", maxWidth: "24rem" }}
+            >
               <label htmlFor="switch">Your cases</label>
               <select
                 id="switch"
@@ -280,7 +337,8 @@ function Dashboard({
               >
                 {cases.map((s, i) => (
                   <option key={s.id} value={s.id}>
-                    Case {i + 1}: {CATEGORY_LABEL[s.category]} ({s.link_count} links)
+                    Case {i + 1}: {CATEGORY_LABEL[s.category]} ({s.link_count}{" "}
+                    links)
                   </option>
                 ))}
               </select>
@@ -302,14 +360,21 @@ function Dashboard({
       </div>
 
       {error && (
-        <p className="well well--clay error" role="alert" style={{ marginBottom: "var(--space-lg)" }}>
+        <p
+          className="well well--clay error"
+          role="alert"
+          style={{ marginBottom: "var(--space-lg)" }}
+        >
           {error}
         </p>
       )}
 
       <FollowUpAssistant onApplied={() => onSwitch(c.id)} />
 
-      <section aria-labelledby="links-h" style={{ marginBottom: "var(--space-2xl)" }}>
+      <section
+        aria-labelledby="links-h"
+        style={{ marginBottom: "var(--space-2xl)" }}
+      >
         <h2 id="links-h" style={{ marginBottom: "var(--space-md)" }}>
           Links
         </h2>
@@ -327,12 +392,19 @@ function Dashboard({
                 defaultOpen={i === 0}
                 complaints={complaints.filter((x) => x.link_id === l.id)}
                 onComplaintChanged={complaintChanged}
+                scan={scans[l.id]}
+                refresh={version}
+                onChecked={() => setPollKey((k) => k + 1)}
               />
             ))}
           </ul>
         )}
 
-        <form onSubmit={addLinks} className="field" style={{ marginTop: "var(--space-xl)" }}>
+        <form
+          onSubmit={addLinks}
+          className="field"
+          style={{ marginTop: "var(--space-xl)" }}
+        >
           <label htmlFor="add">Found it somewhere else?</label>
           <textarea
             id="add"
@@ -353,11 +425,16 @@ function Dashboard({
         <div className="stack">
           <h2>Stop it coming back</h2>
           <p>
-            Register the image with StopNCII. It makes a fingerprint on your device, so Facebook,
-            Instagram, TikTok, Reddit and other partners can block re-uploads. The image is never
-            sent.
+            Register the image with StopNCII. It makes a fingerprint on your
+            device, so Facebook, Instagram, TikTok, Reddit and other partners
+            can block re-uploads. The image is never sent.
           </p>
-          <a className="btn" href={STOPNCII_URL} target="_blank" rel="noreferrer">
+          <a
+            className="btn"
+            href={STOPNCII_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
             Open StopNCII.org
           </a>
         </div>
@@ -381,20 +458,29 @@ function Dashboard({
           </span>
         </div>
         {!confirmDelete ? (
-          <button className="btn btn--danger btn--small" onClick={() => setConfirmDelete(true)}>
+          <button
+            className="btn btn--danger btn--small"
+            onClick={() => setConfirmDelete(true)}
+          >
             Delete this case
           </button>
         ) : (
           <div className="well well--clay stack">
             <p>
-              This permanently deletes the case, its links and their history. It can&apos;t be
-              undone.
+              This permanently deletes the case, its links and their history. It
+              can&apos;t be undone.
             </p>
             <div className="actions">
-              <button className="btn btn--danger btn--small" onClick={removeCase}>
+              <button
+                className="btn btn--danger btn--small"
+                onClick={removeCase}
+              >
                 Yes, delete it
               </button>
-              <button className="btn btn--small" onClick={() => setConfirmDelete(false)}>
+              <button
+                className="btn btn--small"
+                onClick={() => setConfirmDelete(false)}
+              >
                 Keep it
               </button>
             </div>
@@ -402,7 +488,11 @@ function Dashboard({
         )}
       </section>
 
-      <EvidenceLocker c={c} complaints={complaints} onChanged={refreshComplaints} />
+      <EvidenceLocker
+        c={c}
+        complaints={complaints}
+        onChanged={refreshComplaints}
+      />
       <CaseTimeline caseId={c.id} version={version} />
       <DeleteAccount onDeleted={onLock} />
     </div>
@@ -430,17 +520,24 @@ function DeleteAccount({ onDeleted }: { onDeleted: () => void }) {
     <section className="section stack" style={{ paddingTop: 0 }}>
       <h2>Your data</h2>
       <p className="small">
-        You can delete your account at any time. This removes every case, link and history entry
-        from Nivra&apos;s servers.
+        You can delete your account at any time. This removes every case, link
+        and history entry from Nivra&apos;s servers.
       </p>
       {!open ? (
         <div>
-          <button className="btn btn--danger btn--small" onClick={() => setOpen(true)}>
+          <button
+            className="btn btn--danger btn--small"
+            onClick={() => setOpen(true)}
+          >
             Delete my account and all data
           </button>
         </div>
       ) : (
-        <form onSubmit={submit} className="well well--clay stack" style={{ maxWidth: "32rem" }}>
+        <form
+          onSubmit={submit}
+          className="well well--clay stack"
+          style={{ maxWidth: "32rem" }}
+        >
           <p>This can&apos;t be undone. Enter your passphrase to confirm.</p>
           <input
             type="password"
@@ -455,7 +552,11 @@ function DeleteAccount({ onDeleted }: { onDeleted: () => void }) {
             <button className="btn btn--danger btn--small" disabled={!pass}>
               Delete everything
             </button>
-            <button type="button" className="btn btn--small" onClick={() => setOpen(false)}>
+            <button
+              type="button"
+              className="btn btn--small"
+              onClick={() => setOpen(false)}
+            >
               Cancel
             </button>
           </div>
@@ -475,6 +576,9 @@ function LinkRow({
   defaultOpen,
   complaints,
   onComplaintChanged,
+  scan,
+  refresh,
+  onChecked,
 }: {
   link: CaseLink;
   c: NivraCase;
@@ -483,7 +587,24 @@ function LinkRow({
   defaultOpen: boolean;
   complaints: Complaint[];
   onComplaintChanged: () => void;
+  scan: LinkScan | undefined;
+  refresh: number;
+  onChecked: () => void;
 }) {
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  async function checkNow() {
+    setChecking(true);
+    setCheckError("");
+    try {
+      await api.createDiscoveryJob(link.url, link.id);
+      onChecked();
+    } catch (err) {
+      setCheckError(errorText(err));
+    } finally {
+      setChecking(false);
+    }
+  }
   const platform = resolvePlatform(link.url);
   const host = link.host;
   const badge = badgeFor(link, platform);
@@ -533,7 +654,9 @@ function LinkRow({
               {host}
               <span className="muted">{path}</span>
             </span>
-            <span className="small muted">{platform?.name ?? "Website not in our directory"}</span>
+            <span className="small muted">
+              {platform?.name ?? "Website not in our directory"}
+            </span>
           </span>
           <span className="badge" data-tone={badge.tone}>
             {badge.label}
@@ -543,55 +666,95 @@ function LinkRow({
         <div className="link-item__body">
           {/* Left: the notice */}
           <div className="stack">
-            <h3>Your notice</h3>
-            <p className="small muted">
-              Grounds: India&apos;s IT Rules 2021 and IT Act
-              {c.self_taken ? ", plus your copyright" : ""}. A template, not legal advice.
-            </p>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <span className="label">Subject</span>
-              <div className="notice">{notice.subject}</div>
-            </div>
-            <div className="notice">{notice.body}</div>
-            <div className="actions">
-              <button className="btn btn--small" onClick={() => copy(notice.body, "body")}>
-                {copied === "body" ? "Copied" : "Copy notice"}
-              </button>
-              <button className="btn btn--small" onClick={() => copy(notice.subject, "subject")}>
-                {copied === "subject" ? "Copied" : "Copy subject"}
-              </button>
-              {emailChannel?.target && (
-                <a
-                  className="btn btn--small"
-                  href={`mailto:${emailChannel.target}?subject=${encodeURIComponent(
-                    notice.subject,
-                  )}&body=${encodeURIComponent(notice.body)}`}
-                >
-                  Open in email
-                </a>
-              )}
-              <button
-                className="btn btn--small"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    approveForSending(link.id);
-                    await api.createComplaint(link.id, notice.subject, notice.body);
-                    announceComplaintsChanged();
-                  } catch (err) {
-                    onError(errorText(err));
-                  } finally {
-                    setBusy(false);
-                  }
+            <ScanFindings
+              scan={scan}
+              drafting={isDrafting(scan, complaints.length > 0)}
+              hasNotice={complaints.length > 0}
+              onCheck={checkNow}
+              checking={checking}
+              error={checkError}
+            />
+            <NoticeAssistant
+              caseId={c.id}
+              linkId={link.id}
+              platformName={platform?.name}
+              refresh={refresh}
+            />
+            <ComplaintTracker
+              complaints={complaints}
+              platform={platform}
+              onChanged={onComplaintChanged}
+            />
+            <details className="well">
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  color: "var(--text)",
                 }}
-                title="Approve this notice: Nivra emails it where it can and tracks it"
               >
-                Approve &amp; send
-              </button>
-            </div>
-            <NoticeAssistant caseId={c.id} linkId={link.id} platformName={platform?.name} />
-            <ComplaintTracker complaints={complaints} platform={platform} onChanged={onComplaintChanged} />
+                Or use the standard template
+              </summary>
+              <div className="stack" style={{ marginTop: "var(--space-md)" }}>
+                <p className="small muted">
+                  Grounds: India&apos;s IT Rules 2021 and IT Act
+                  {c.self_taken ? ", plus your copyright" : ""}. A template, not
+                  legal advice.
+                </p>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <span className="label">Subject</span>
+                  <div className="notice">{notice.subject}</div>
+                </div>
+                <div className="notice">{notice.body}</div>
+                <div className="actions">
+                  <button
+                    className="btn btn--small"
+                    onClick={() => copy(notice.body, "body")}
+                  >
+                    {copied === "body" ? "Copied" : "Copy notice"}
+                  </button>
+                  <button
+                    className="btn btn--small"
+                    onClick={() => copy(notice.subject, "subject")}
+                  >
+                    {copied === "subject" ? "Copied" : "Copy subject"}
+                  </button>
+                  {emailChannel?.target && (
+                    <a
+                      className="btn btn--small"
+                      href={`mailto:${emailChannel.target}?subject=${encodeURIComponent(
+                        notice.subject,
+                      )}&body=${encodeURIComponent(notice.body)}`}
+                    >
+                      Open in email
+                    </a>
+                  )}
+                  <button
+                    className="btn btn--small"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        approveForSending(link.id);
+                        await api.createComplaint(
+                          link.id,
+                          notice.subject,
+                          notice.body,
+                        );
+                        announceComplaintsChanged();
+                      } catch (err) {
+                        onError(errorText(err));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    title="Approve this notice: Nivra emails it where it can and tracks it"
+                  >
+                    Approve &amp; send
+                  </button>
+                </div>
+              </div>
+            </details>
           </div>
 
           {/* Right: where to send, status, next step */}
@@ -627,27 +790,35 @@ function LinkRow({
                     </ol>
                   )}
                   <p className="small">
-                    <Link href={`/guides/${platform.id}`}>Full {platform.name} guide</Link>
+                    <Link href={`/guides/${platform.id}`}>
+                      Full {platform.name} guide
+                    </Link>
                   </p>
                 </>
               ) : (
                 <ol className="ladder small">
                   <li>
                     <span>
-                      Look for a &ldquo;Contact&rdquo;, &ldquo;Abuse&rdquo; or &ldquo;DMCA&rdquo;
-                      page on {host} and send the notice there.
+                      Nivra emails the notice to the abuse desk of the company
+                      hosting {host}, found automatically in the public registry.
+                      You see the exact address before and after it is sent.
                     </span>
                   </li>
                   <li>
                     <span>
-                      Find the company hosting the site with a WHOIS lookup, and email the notice
-                      to its abuse address.
+                      If that bounces, look for a &ldquo;Contact&rdquo;,
+                      &ldquo;Abuse&rdquo; or &ldquo;DMCA&rdquo; page on {host} and
+                      send it there too.
                     </span>
                   </li>
                   <li>
                     <span>
                       If the site uses Cloudflare, report it at{" "}
-                      <a href={CLOUDFLARE_ABUSE_URL} target="_blank" rel="noreferrer">
+                      <a
+                        href={CLOUDFLARE_ABUSE_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
                         abuse.cloudflare.com
                       </a>
                       .
@@ -672,14 +843,18 @@ function LinkRow({
             />
 
             {needsEscalation && (
-              <Escalation platform={platform} rejected={link.status === "rejected"} />
+              <Escalation
+                platform={platform}
+                rejected={link.status === "rejected"}
+              />
             )}
 
             {link.status === "reported" && !overdue && (
               <p className="small muted">
                 {platform?.name ?? "The site"} should act within{" "}
-                <span className="num">{platform?.expectedHours ?? 24}</span> hours of your report.
-                If it doesn&apos;t, come back and we&apos;ll show you the next step.{" "}
+                <span className="num">{platform?.expectedHours ?? 24}</span>{" "}
+                hours of your report. If it doesn&apos;t, come back and
+                we&apos;ll show you the next step.{" "}
                 <button
                   className="btn btn--ghost btn--small"
                   disabled={busy}
@@ -779,18 +954,27 @@ function StatusActions({
   );
 }
 
-function Escalation({ platform, rejected }: { platform: Platform | null; rejected: boolean }) {
+function Escalation({
+  platform,
+  rejected,
+}: {
+  platform: Platform | null;
+  rejected: boolean;
+}) {
   return (
     <div className="well well--clay stack">
       <h3>
-        {rejected ? "They refused. Here's what to do next" : "No reply in time. Here's the next step"}
+        {rejected
+          ? "They refused. Here's what to do next"
+          : "No reply in time. Here's the next step"}
       </h3>
       <ol className="ladder small">
         <li>
           <span>
-            Send the notice again to {platform ? `${platform.name}'s` : "the site's"} Grievance
-            Officer, saying the 24-hour deadline has passed. Large platforms list this contact on
-            their India help pages.
+            Send the notice again to{" "}
+            {platform ? `${platform.name}'s` : "the site's"} Grievance Officer,
+            saying the 24-hour deadline has passed. Large platforms list this
+            contact on their India help pages.
           </span>
         </li>
         <li>
@@ -822,5 +1006,17 @@ function Escalation({ platform, rejected }: { platform: Platform | null; rejecte
         </li>
       </ol>
     </div>
+  );
+}
+
+/** A finished check (photo found, or page couldn't be checked) whose link has
+ *  no notice yet: the assistant is drafting one (started by the backend). */
+function isDrafting(scan: LinkScan | undefined, hasNotice: boolean) {
+  if (!scan || hasNotice || !scan.finished_at) return false;
+  const ready =
+    (scan.status === "done" && scan.matches_found > 0) ||
+    scan.status === "failed";
+  return (
+    ready && Date.now() - new Date(scan.finished_at).getTime() < 3 * 60 * 1000
   );
 }

@@ -116,6 +116,7 @@ export interface DiscoveryJob {
   stage: "queued" | "fetching" | "scanning" | "done" | "failed";
   /** One entry per image read on the page (no image data, only hashes). */
   scan_log: ScanEntry[] | null;
+  case_link_id: string | null;
   error_message: string | null;
   page_title: string | null;
   candidates_found: number;
@@ -301,10 +302,35 @@ export interface Recipients {
   form_only: boolean;
   forms: { label: string; target: string | null }[];
   platform: string | null;
+  /** Who the email is from, where replies go, how it is delivered. */
+  from_address: string;
+  reply_to: string | null;
+  delivery: "console" | "smtp";
+  redirect_to: string | null;
 }
 
-export type SentComplaint = Complaint & {
-  sent_to: string[];
-  delivered: boolean;
-  replies_to_you: boolean;
-};
+export type SentComplaint = Complaint &
+  Omit<Recipients, "emails" | "form_only" | "forms" | "platform"> & {
+    sent_to: string[];
+    delivered: boolean;
+    replies_to_you: boolean;
+  };
+
+/** Latest check of one case link (GET /cases/{id}/scans). */
+export interface LinkScan {
+  job_id: string;
+  status: DiscoveryJob["status"];
+  stage: DiscoveryJob["stage"];
+  images_checked: number;
+  matches_found: number;
+  best: MatchClass | null;
+  distance: number | null;
+  error_message: string | null;
+  finished_at: string | null;
+}
+
+export interface DemoInfo {
+  enabled: boolean;
+  photo?: string;
+  links: { url: string; site: string; about: string }[];
+}

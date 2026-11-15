@@ -18,6 +18,18 @@ function nameOf(url: string) {
   }
 }
 
+/** Only the bundled demo sites (*.test, Nivra's own drawn images) get
+ *  thumbnails; real scans never load found images (section 22.10). */
+function demoThumb(url: string) {
+  try {
+    return new URL(url).hostname.endsWith(".test")
+      ? `/api/demo/image?url=${encodeURIComponent(url)}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function jobCards(job: DiscoveryJob): ScanCardData[] {
   return (job.scan_log ?? []).map((e) => ({
     key: `${job.id}-${e.i}`,
@@ -28,10 +40,17 @@ export function jobCards(job: DiscoveryJob): ScanCardData[] {
     distance: e.distance,
     exact: e.exact,
     label: e.label,
+    thumb: demoThumb(e.url),
   }));
 }
 
-export default function LiveScan({ jobIds, onFinished }: { jobIds: string[]; onFinished?: () => void }) {
+export default function LiveScan({
+  jobIds,
+  onFinished,
+}: {
+  jobIds: string[];
+  onFinished?: (jobs: DiscoveryJob[]) => void;
+}) {
   const [jobs, setJobs] = useState<Record<string, DiscoveryJob>>({});
 
   useEffect(() => {
@@ -48,7 +67,10 @@ export default function LiveScan({ jobIds, onFinished }: { jobIds: string[]; onF
       });
       const finished = results.every((j) => !j || j.status === "done" || j.status === "failed");
       if (finished) {
-        if (!announced) { announced = true; onFinished?.(); }
+        if (!announced) {
+          announced = true;
+          onFinished?.(results.filter((j): j is DiscoveryJob => j !== null));
+        }
         return;
       }
       timer = setTimeout(tick, 900);

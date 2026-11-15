@@ -109,4 +109,13 @@ def process_job(
     from app.services.monitoring import on_job_finished
     on_job_finished(db, job)
     db.commit()
+    # Check first, then draft (section 23.4): a finished check of a case link
+    # lets the assistant draft that link's notice from what was found.
+    if job.case_link_id:
+        from app.agents.service import auto_draft_for_job
+        try:
+            auto_draft_for_job(db, job)
+        except Exception as e:  # drafting trouble must never break the scan
+            log.error("Auto-draft failed: %s", type(e).__name__)
+            db.rollback()
     return job

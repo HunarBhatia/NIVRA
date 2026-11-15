@@ -118,7 +118,7 @@ def test_account_deletion_forgets_saved_agent_state(user_client: TestClient):
 # ---------------- Production configuration ----------------
 
 GOOD = dict(environment="production", database_url="postgresql+psycopg://u:p@db/nivra",
-            cookie_secure=True, enable_prototype_tools=False, data_key="k" * 44,
+            cookie_secure=True, enable_prototype_tools=False, enable_demo_sites=False, data_key="k" * 44,
             allowed_origins=["https://nivra.example"], agent_checkpoint_path="/data/agents.db",
             evidence_dir="/data/evidence")
 
@@ -126,6 +126,8 @@ GOOD = dict(environment="production", database_url="postgresql+psycopg://u:p@db/
 @pytest.mark.parametrize("override,message", [
     ({"cookie_secure": False}, "COOKIE_SECURE"),
     ({"enable_prototype_tools": True}, "PROTOTYPE"),
+    ({"enable_demo_sites": True}, "DEMO_SITES"),
+    ({"email_redirect_to": "me@example.org"}, "REDIRECT"),
     ({"database_url": "sqlite:///x.db"}, "PostgreSQL"),
     ({"discovery_allow_private_hosts": True}, "PRIVATE_HOSTS"),
     ({"data_key": None}, "DATA_KEY"),

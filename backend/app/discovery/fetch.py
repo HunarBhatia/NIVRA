@@ -130,6 +130,11 @@ class SafeFetcher:
 
     def get(self, url: str, max_bytes: int, check_robots: bool = True) -> FetchResult:
         current = url
+        if get_settings().enable_demo_sites:
+            from app.demo_sites import serve_demo  # bundled *.test pages (section 23)
+            demo = serve_demo(url, max_bytes)
+            if demo is not None:
+                return demo
         for _ in range(MAX_REDIRECTS + 1):
             # Scheme, port and address first, so the user sees the real reason
             # (the request itself re-checks the address before connecting).

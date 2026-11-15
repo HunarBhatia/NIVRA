@@ -104,6 +104,37 @@ def start_run(db: Session, user: User, agent: str, state: dict[str, Any],
     return _finish(db, run, result)
 
 
+def auto_draft_for_job(db: Session, job) -> AgentRun | None:
+    """After a case link has been checked, draft its notice - unless the
+    check ran and did NOT find the photo (then the user decides), or the
+    link already has a notice or a draft in progress."""
+    from app import platforms
+
+    link = db.get(CaseLink, job.case_link_id)
+    user = db.get(User, job.user_id)
+    if link is None or user is None:
+        return None
+    if job.status == "done" and job.matches_found == 0:
+        return None
+    if db.query(Complaint).filter(Complaint.link_id == link.id,
+                                  Complaint.status != "discarded").first():
+        return None
+    if db.query(AgentRun).filter(AgentRun.agent == "complaint", AgentRun.subject_id == link.id,
+                                 AgentRun.status.in_(("running", "awaiting_approval"))).first():
+        return None
+    p = platforms.resolve(link.host)
+    name = p["name"] if p else None
+    if name is None:
+        from app.core.config import get_settings
+        if get_settings().enable_demo_sites:
+            from app.demo_sites import DEMO_SITES
+            name = DEMO_SITES.get(link.host, {}).get("name")
+    return start_run(db, user, "complaint",
+                     {"case_id": link.case_id, "link_id": link.id,
+                      "platform_name": name or link.host},
+                     "link", link.id)
+
+
 def decide(db: Session, run: AgentRun, decision: dict[str, Any]) -> AgentRun:
     if run.status != "awaiting_approval":
         raise RunConflict("This run isn't waiting for a decision.")

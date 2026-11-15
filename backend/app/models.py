@@ -205,6 +205,10 @@ class DiscoveryJob(Base):
     # and one entry per image checked (fingerprint + comparison, never the image).
     stage: Mapped[str] = mapped_column(String(16), default="queued")
     scan_log: Mapped[list | None] = mapped_column(JSON, default=None)
+    # The case link this check is for (section 23.3): its result decides
+    # whether the assistant drafts a notice, and becomes the notice's evidence.
+    case_link_id: Mapped[str | None] = mapped_column(
+        ForeignKey("case_links.id", ondelete="SET NULL"), default=None, index=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     finished_at: Mapped[datetime | None] = mapped_column(default=None)

@@ -78,6 +78,14 @@ def recipients_for(host: str, lookup=None) -> dict[str, Any]:
     Returns {"emails": [{"address", "why"}], "form_only": bool,
              "forms": [{"label", "target"}]}.
     """
+    from app.core.config import get_settings
+    if get_settings().enable_demo_sites:
+        from app.demo_sites import DEMO_SITES
+        site = DEMO_SITES.get(host)
+        if site is not None:
+            return {"emails": [{"address": site["abuse"],
+                                "why": f"Abuse desk of {site['name']} (demo site)"}],
+                    "form_only": False, "forms": [], "platform": site["name"]}
     p = platforms.resolve(host)
     if p is not None:
         emails = [{"address": m["target"], "why": m["label"]}
