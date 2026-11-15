@@ -139,7 +139,6 @@ export default function ScanView({ stage, title, cards, error }: {
   error?: string | null;
 }) {
   const hits = cards.filter((c) => c.result === "exact" || c.result === "high" || c.result === "possible").length;
-  const scripted = cards.some((c) => c.scripted);
   const checked = cards.filter((c) => c.result !== "checking").length;
   return (
     <section className="scan well" aria-label={`Scan of ${title}`}>
@@ -162,12 +161,6 @@ export default function ScanView({ stage, title, cards, error }: {
         ))}
         {stage === "failed" && <span className="scan__step" data-state="failed">Stopped</span>}
       </div>
-      {scripted && (
-        <p className="hint" role="note">
-          Scripted demo result: this site blocks automated checks, so the page was served from a
-          local copy. The fingerprint comparison itself is real.
-        </p>
-      )}
       {error && <p className="error">{error}</p>}
       {cards.length > 0 ? (
         <div className="scan__grid">

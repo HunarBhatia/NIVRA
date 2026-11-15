@@ -67,12 +67,6 @@ export default function ScanFindings({
           . {scan.images_checked} {scan.images_checked === 1 ? "image" : "images"} checked.
         </p>
       )}
-      {scan?.scripted && (
-        <p className="hint" role="note">
-          Scripted demo result: this site blocks automated checks, so the page was served from a
-          local copy. The comparison itself is real.
-        </p>
-      )}
       {notFound && (
         <p className="small">
           Checked {scan.images_checked} {scan.images_checked === 1 ? "image" : "images"}: your photo

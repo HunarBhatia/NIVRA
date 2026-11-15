@@ -1961,10 +1961,10 @@ and a celebrity's image, which must not be published in the repository.
 Without the folder, nothing is scripted. Tests use a temporary folder.
 
 24.5 Disclosed on screen, and can't reach the real site
-Every scan entry from a scripted page is marked; the scan view and the
-case page say "Scripted demo result: this site blocks automated checks, so
-the page was served from a local copy." Real email delivery for that link
-is refused (development logging and the demo redirect still work).
+Every scan entry from a scripted page is marked "scripted" in the data. The
+on-screen label was removed at the owner's request; the owner discloses it
+to the judges verbally. Real email delivery for that link is still refused
+(development logging and the demo redirect still work).
 
 24.6 Only in development
 Scripted pages follow NIVRA_ENABLE_DEMO_SITES, which the API refuses in
@@ -1990,3 +1990,7 @@ draft waiting for approval.
 D37 [DECIDED 2026-11-15] A blocked real link may be served from a local,
     git-ignored copy for a disclosed demo; the comparison stays real, the
     UI labels it "Scripted demo result" and real delivery is refused.
+
+24.10 Update: the local copy now holds only the owner's photo (no filler
+images), and the on-screen "Scripted demo result" label was removed by the
+owner's decision (24.5).
